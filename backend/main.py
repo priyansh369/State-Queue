@@ -1,11 +1,14 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import models
 from .database import engine
+from .db_migrate import ensure_schema
+from .socket_manager import manager
 from .routers import auth, patient, doctor, reception
 
 models.Base.metadata.create_all(bind=engine)
+ensure_schema(engine)
 
 app = FastAPI(title="Smart Hospital Management System")
 
@@ -28,4 +31,15 @@ app.include_router(reception.router)
 @app.get("/")
 def read_root():
     return {"message": "Smart Hospital Management API"}
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            # clients can send pings; we ignore payload and keep connection open
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await manager.disconnect(websocket)
 

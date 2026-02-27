@@ -1,3 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 *,
 *::before,
 *::after {
@@ -127,6 +131,13 @@ body {
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
 }
 
+.row-between {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 .mt-lg {
   margin-top: 1.5rem;
 }
@@ -197,6 +208,16 @@ body {
   font-size: 0.9rem;
 }
 
+.primary-btn {
+  background: #3182ce;
+  color: #fff;
+}
+
+.danger-btn {
+  background: #e53e3e;
+  color: #fff;
+}
+
 /* password field toggle */
 .password-field .input-with-toggle {
   position: relative;
@@ -216,8 +237,6 @@ body {
   cursor: pointer;
   font-size: 0.85rem;
   padding: 0 0.25rem;
-}
-  color: #fff;
 }
 
 .form-group {

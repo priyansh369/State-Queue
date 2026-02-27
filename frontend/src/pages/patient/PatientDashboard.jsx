@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import api from "../../utils/api";
 import { TextInput, Select } from "../../components/common/FormControls";
 import StatCard from "../../components/common/StatCard";
 import Table from "../../components/common/Table";
 import { useAuth } from "../../state/AuthContext";
+import { subscribeQueueUpdates } from "../../utils/realtime";
 
 export default function PatientDashboard({ showBooking }) {
   const { user } = useAuth();
@@ -19,6 +20,7 @@ export default function PatientDashboard({ showBooking }) {
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [currentStatus, setCurrentStatus] = useState(null);
+  const [live, setLive] = useState(null);
 
   const handleChange = (field, value) =>
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -32,10 +34,11 @@ export default function PatientDashboard({ showBooking }) {
     }
   };
 
-  const loadStatus = async (patientId) => {
+  const loadLiveStatus = async (patientId) => {
     try {
-      const res = await api.get(`/patient/status/${patientId}`);
-      setCurrentStatus(res.data);
+      const res = await api.get(`/patient/live-status/${patientId}`);
+      setLive(res.data);
+      setCurrentStatus(res.data.patient);
     } catch (e) {
       console.error(e);
     }
@@ -53,6 +56,7 @@ export default function PatientDashboard({ showBooking }) {
       toast.success(
         `Booked. Queue #${res.data.queue_number}, status ${res.data.status}`
       );
+      localStorage.setItem("smarthospital_patient_id", String(res.data.id));
       setForm({
         name: "",
         age: "",
@@ -61,7 +65,7 @@ export default function PatientDashboard({ showBooking }) {
         priority: "normal",
         doctor_id: "",
       });
-      await loadStatus(res.data.id);
+      await loadLiveStatus(res.data.id);
       await loadAppointments(res.data.id);
     } catch (e) {
       console.error(e);
@@ -80,10 +84,39 @@ export default function PatientDashboard({ showBooking }) {
       }
     })();
 
-    if (currentStatus?.id) {
-      loadAppointments(currentStatus.id);
+    const storedPatientId = localStorage.getItem("smarthospital_patient_id");
+    if (storedPatientId) {
+      const pid = Number(storedPatientId);
+      if (!Number.isNaN(pid) && pid > 0) {
+        loadLiveStatus(pid).catch(() => {});
+        loadAppointments(pid).catch(() => {});
+      }
     }
   }, []);
+
+  // Short polling every 5 seconds (hackathon-safe).
+  useEffect(() => {
+    if (!currentStatus?.id) return undefined;
+    const pid = currentStatus.id;
+    const interval = setInterval(() => {
+      loadLiveStatus(pid).catch(() => {});
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [currentStatus?.id]);
+
+  // WebSocket sync: instant refresh when queue changes.
+  useEffect(() => {
+    if (!currentStatus?.id) return undefined;
+    const unsubscribe = subscribeQueueUpdates((evt) => {
+      if (evt?.type !== "queue_update") return;
+      loadLiveStatus(currentStatus.id).catch(() => {});
+    });
+    return () => unsubscribe();
+  }, [currentStatus?.id]);
+
+  const nowServingToken =
+    live?.current_token_queue_number != null ? live.current_token_queue_number : "-";
+  const waitingCount = live?.waiting_count != null ? live.waiting_count : "-";
 
   return (
     <div className="panel">
@@ -104,6 +137,8 @@ export default function PatientDashboard({ showBooking }) {
               currentStatus ? currentStatus.estimated_wait_minutes : "-"
             }
           />
+          <StatCard label="Now Serving" value={nowServingToken} />
+          <StatCard label="Total Waiting (Doctor)" value={waitingCount} />
         </div>
         {showBooking && (
           <div className="card">

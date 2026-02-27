@@ -56,6 +56,8 @@ class Patient(Base):
     queue_number = Column(Integer, nullable=False, index=True)
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_serving_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
 
     doctor = relationship("User", back_populates="doctor_patients")
     appointments = relationship("Appointment", back_populates="patient")
@@ -67,8 +69,11 @@ class Appointment(Base):
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("patients.id"), nullable=False)
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    appointment_date = Column(DateTime, nullable=False)
+    appointment_date = Column(DateTime, nullable=False)  # legacy "booked at"
     status = Column(String, nullable=False, default=StatusEnum.WAITING)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
 
     patient = relationship("Patient", back_populates="appointments")
     doctor = relationship("User", back_populates="doctor_appointments")

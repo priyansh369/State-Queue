@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import api from "../../utils/api";
 import { Select, TextInput } from "../../components/common/FormControls";
 import StatCard from "../../components/common/StatCard";
 import Table from "../../components/common/Table";
 import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
+import { subscribeQueueUpdates } from "../../utils/realtime";
 
 export default function ReceptionDashboard() {
   const [stats, setStats] = useState(null);
@@ -17,7 +18,10 @@ export default function ReceptionDashboard() {
     priority: "normal",
     doctor_id: "",
   });
-  const [doctors, setDoctors] = useState([]);
+  const [doctorOptions, setDoctorOptions] = useState([]);
+  const [filterDoctorOptions, setFilterDoctorOptions] = useState([]);
+  const [filterDoctorId, setFilterDoctorId] = useState("");
+  const filterDoctorIdRef = useRef("");
 
   const handleChange = (field, value) =>
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -28,9 +32,18 @@ export default function ReceptionDashboard() {
   };
 
   const loadQueue = async () => {
-    const res = await api.get("/reception/queue");
+    const currentFilter = filterDoctorIdRef.current;
+    const res = await api.get(
+      currentFilter
+        ? `/reception/queue?doctor_id=${Number(currentFilter)}`
+        : "/reception/queue"
+    );
     setQueue(res.data);
   };
+
+  useEffect(() => {
+    filterDoctorIdRef.current = filterDoctorId;
+  }, [filterDoctorId]);
 
   useEffect(() => {
     loadStats();
@@ -39,13 +52,46 @@ export default function ReceptionDashboard() {
     // fetch doctors for dropdown
     (async () => {
       try {
-        const res = await api.get("/auth/doctors");
-        setDoctors(res.data.map((d) => ({ value: d.id, label: d.name })));
+        const res = await api.get("/reception/doctors");
+        const registerOpts = res.data.map((d) => ({
+          value: String(d.id),
+          label: d.name,
+        }));
+        const filterOpts = [
+          { value: "", label: "All doctors" },
+          ...registerOpts,
+        ];
+        setDoctorOptions(registerOpts);
+        setFilterDoctorOptions(filterOpts);
       } catch (e) {
         console.error("Failed to load doctors", e);
       }
     })();
+
+    // Realtime sync: when anyone books/registers/completes, refresh instantly.
+    const unsubscribe = subscribeQueueUpdates((evt) => {
+      if (evt?.type !== "queue_update") return;
+      loadStats().catch(() => {});
+      loadQueue().catch(() => {});
+    });
+
+    // Fallback polling (in case websocket is blocked)
+    const interval = setInterval(() => {
+      loadStats().catch(() => {});
+      loadQueue().catch(() => {});
+    }, 10000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(interval);
+    };
   }, []);
+
+  // Reload queue when filter changes
+  useEffect(() => {
+    loadQueue().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterDoctorId]);
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -165,7 +211,7 @@ export default function ReceptionDashboard() {
               label="Doctor"
               value={form.doctor_id}
               onChange={(v) => handleChange("doctor_id", v)}
-              options={doctors}
+              options={doctorOptions}
             />
             <button className="primary-btn">Register</button>
           </form>
@@ -184,7 +230,17 @@ export default function ReceptionDashboard() {
       </div>
 
       <div className="card mt-lg">
-        <h3>Current Queue</h3>
+        <div className="row-between">
+          <h3>Current Queue</h3>
+          <div style={{ width: 260 }}>
+            <Select
+              label="View queue for"
+              value={filterDoctorId}
+              onChange={setFilterDoctorId}
+              options={filterDoctorOptions}
+            />
+          </div>
+        </div>
         <Table
           rowKey="id"
           columns={[

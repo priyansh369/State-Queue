@@ -4,8 +4,11 @@ import api from "../../utils/api";
 import StatCard from "../../components/common/StatCard";
 import Table from "../../components/common/Table";
 import Modal from "../../components/common/Modal";
+import { useAuth } from "../../state/AuthContext";
+import { subscribeQueueUpdates } from "../../utils/realtime";
 
 export default function DoctorDashboard() {
+  const { user } = useAuth();
   const [stats, setStats] = useState(null);
   const [queue, setQueue] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -25,9 +28,17 @@ export default function DoctorDashboard() {
     loadQueue();
   }, []);
 
-  // Keep dashboard in sync with actions from reception/patient by polling
-  // and reloading when the window regains focus.
+  // Realtime sync (plus small fallback polling).
   useEffect(() => {
+    const unsubscribe = subscribeQueueUpdates((evt) => {
+      if (evt?.type !== "queue_update") return;
+      if (evt?.doctor_id && user?.id && Number(evt.doctor_id) !== Number(user.id)) {
+        return;
+      }
+      loadStats().catch(() => {});
+      loadQueue().catch(() => {});
+    });
+
     const interval = setInterval(() => {
       loadStats().catch(() => {});
       loadQueue().catch(() => {});
@@ -40,10 +51,22 @@ export default function DoctorDashboard() {
     window.addEventListener("focus", onFocus);
 
     return () => {
+      unsubscribe();
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [user?.id]);
+
+  const startServing = async (id) => {
+    try {
+      await api.put(`/doctor/start/${id}`);
+      toast.success("Started serving");
+      await loadQueue();
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to start");
+    }
+  };
 
   const markCompleted = async (id) => {
     try {
@@ -57,6 +80,8 @@ export default function DoctorDashboard() {
       toast.error("Failed to update");
     }
   };
+
+  const nowServing = queue.length ? queue[0] : null;
 
   return (
     <div className="panel">
@@ -77,6 +102,44 @@ export default function DoctorDashboard() {
           value={stats ? stats.completed : "-"}
           accent="success"
         />
+      </div>
+
+      <div className="card mt-lg">
+        <h3>Now Serving</h3>
+        {nowServing ? (
+          <div className="token-now">
+            <div className="token-now-main">
+              <div className="token-number">#{nowServing.queue_number}</div>
+              <div>
+                <div className="token-name">{nowServing.name}</div>
+                <div className="token-meta">
+                  <span
+                    className={
+                      nowServing.priority === "emergency"
+                        ? "pill pill-danger"
+                        : "pill"
+                    }
+                  >
+                    {nowServing.priority}
+                  </span>
+                  <span className="token-wait">
+                    Est: {nowServing.estimated_wait_minutes} min
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div style={{ marginLeft: "auto" }}>
+              <button className="primary-btn" onClick={() => startServing(nowServing.id)}>
+                Start
+              </button>{" "}
+              <button className="danger-btn" onClick={() => markCompleted(nowServing.id)}>
+                Complete
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p>No waiting patients.</p>
+        )}
       </div>
 
       <div className="card mt-lg">
@@ -141,6 +204,14 @@ export default function DoctorDashboard() {
             <p>
               <strong>Est. Wait:</strong> {selected.estimated_wait_minutes} min
             </p>
+            {nowServing?.id === selected.id && (
+              <button
+                className="primary-btn"
+                onClick={() => startServing(selected.id)}
+              >
+                Start Serving
+              </button>
+            )}{" "}
             <button
               className="primary-btn"
               onClick={() => markCompleted(selected.id)}

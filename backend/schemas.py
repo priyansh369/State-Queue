@@ -116,3 +116,11 @@ class DoctorOut(BaseModel):
     class Config:
         orm_mode = True
 
+
+class LiveQueueStatus(BaseModel):
+    patient: QueuePatient
+    current_token_id: Optional[int]
+    current_token_queue_number: Optional[int]
+    waiting_count: int
+    doctor_average_service_minutes: int
+
