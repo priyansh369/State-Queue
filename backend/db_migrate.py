@@ -46,3 +46,41 @@ def ensure_schema(engine: Engine) -> None:
     except Exception:
         pass
 
+    # audit_logs table + indexes
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS audit_logs (
+                    id INTEGER PRIMARY KEY,
+                    user_id INTEGER NOT NULL,
+                    action TEXT NOT NULL,
+                    patient_id INTEGER,
+                    timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(user_id) REFERENCES users(id),
+                    FOREIGN KEY(patient_id) REFERENCES patients(id)
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_audit_user_id ON audit_logs(user_id)"))
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_audit_patient_id ON audit_logs(patient_id)")
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp)")
+        )
+
+    # enforce per-doctor queue uniqueness
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_patient_doctor_queue "
+                    "ON patients(doctor_id, queue_number)"
+                )
+            )
+    except Exception:
+        # Existing duplicate rows can block adding this index.
+        pass
+

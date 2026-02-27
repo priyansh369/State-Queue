@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 from .. import models, schemas
 from ..auth_utils import require_role
 from ..database import get_db
-from ..ml_engine import compute_queue_estimates, compute_patient_eta_minutes
+from ..ml_engine import compute_queue_estimates
 from ..realtime import emit_queue_update
+from ..services.hospital import dashboard_analytics, map_queue_patient, write_audit_log
+from ..ws_payloads import patient_payload
 
 router = APIRouter(prefix="/doctor", tags=["doctor"])
 
@@ -19,13 +21,10 @@ def get_doctor_queue(
 ):
     estimates = compute_queue_estimates(db, current_user.id)
     return [
-        schemas.QueuePatient(
-            id=e.patient.id,
-            name=e.patient.name,
-            priority=e.patient.priority,
-            status=e.patient.status,
+        map_queue_patient(
+            db,
+            e.patient,
             queue_number=idx + 1,
-            symptoms=e.patient.symptoms,
             estimated_wait_minutes=e.eta_minutes,
         )
         for idx, e in enumerate(estimates)
@@ -100,14 +99,19 @@ def complete_patient(
             appointment.started_at = started
         db.add(appointment)
 
+    write_audit_log(
+        db,
+        user_id=current_user.id,
+        action="MARK_PATIENT_COMPLETED",
+        patient_id=patient.id,
+    )
     db.commit()
     db.refresh(patient)
 
     emit_queue_update(
         background_tasks,
-        reason="doctor_completed",
-        doctor_id=current_user.id,
-        patient_id=patient.id,
+        event_type="STATUS_UPDATED",
+        data=patient_payload(patient),
     )
     return patient
 
@@ -168,9 +172,8 @@ def start_serving_patient(
 
     emit_queue_update(
         background_tasks,
-        reason="doctor_started",
-        doctor_id=current_user.id,
-        patient_id=patient.id,
+        event_type="STATUS_UPDATED",
+        data=patient_payload(patient),
     )
     return patient
 
@@ -210,10 +213,12 @@ def doctor_dashboard_stats(
         )
         .count()
     )
+    analytics = dashboard_analytics(db, doctor_id=current_user.id)
     return schemas.DashboardStats(
         total_patients=total_patients,
         waiting=waiting,
         emergency=emergency,
         completed=completed,
+        **analytics,
     )
 

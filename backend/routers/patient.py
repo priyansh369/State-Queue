@@ -1,6 +1,5 @@
-from datetime import datetime
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -8,6 +7,12 @@ from ..auth_utils import require_role
 from ..database import get_db
 from ..ml_engine import compute_patient_eta_minutes, compute_queue_estimates, estimate_next_service_minutes
 from ..realtime import emit_queue_update
+from ..services.hospital import (
+    create_appointment_for_patient,
+    create_patient_with_queue,
+    map_queue_patient,
+)
+from ..ws_payloads import patient_payload
 
 router = APIRouter(prefix="/patient", tags=["patient"])
 
@@ -19,44 +24,30 @@ def book_appointment(
     db: Session = Depends(get_db),
     current_user=Depends(require_role(models.UserRoleEnum.PATIENT)),
 ):
-    # Assign next token number for this doctor (per-doctor queue)
-    max_queue = (
-        db.query(models.Patient.queue_number)
-        .filter(models.Patient.doctor_id == patient_in.doctor_id)
-        .order_by(models.Patient.queue_number.desc())
-        .first()
-    )
-    next_queue = (max_queue[0] if max_queue else 0) + 1
-
-    patient = models.Patient(
-        name=patient_in.name,
-        age=patient_in.age,
-        gender=patient_in.gender,
-        symptoms=patient_in.symptoms,
-        priority=patient_in.priority,
-        status=models.StatusEnum.WAITING,
-        queue_number=next_queue,
-        doctor_id=patient_in.doctor_id,
-    )
-    db.add(patient)
-    db.commit()
-    db.refresh(patient)
-
-    # Create appointment record (same created_at as appointment date for simplicity)
-    appointment = models.Appointment(
-        patient_id=patient.id,
-        doctor_id=patient_in.doctor_id,
-        appointment_date=datetime.utcnow(),
-        status=models.StatusEnum.WAITING,
-    )
-    db.add(appointment)
-    db.commit()
+    try:
+        patient = create_patient_with_queue(
+            db,
+            name=patient_in.name,
+            age=patient_in.age,
+            gender=patient_in.gender,
+            symptoms=patient_in.symptoms,
+            priority=patient_in.priority,
+            doctor_id=patient_in.doctor_id,
+        )
+        create_appointment_for_patient(db, patient_id=patient.id, doctor_id=patient_in.doctor_id)
+        db.commit()
+        db.refresh(patient)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Unable to allocate queue number. Please retry.",
+        )
 
     emit_queue_update(
         background_tasks,
-        reason="patient_booked",
-        doctor_id=patient.doctor_id,
-        patient_id=patient.id,
+        event_type="NEW_APPOINTMENT",
+        data=patient_payload(patient),
     )
 
     return patient
@@ -74,15 +65,7 @@ def get_status(id: int, db: Session = Depends(get_db)):
         patient.queue_number,
     )
     estimated_wait = compute_patient_eta_minutes(db, patient)
-    return schemas.QueuePatient(
-        id=patient.id,
-        name=patient.name,
-        priority=patient.priority,
-        status=patient.status,
-        queue_number=token_number,
-        symptoms=patient.symptoms,
-        estimated_wait_minutes=estimated_wait,
-    )
+    return map_queue_patient(db, patient, queue_number=token_number, estimated_wait_minutes=estimated_wait)
 
 
 @router.get("/live-status/{id}", response_model=schemas.LiveQueueStatus)
@@ -106,13 +89,10 @@ def get_live_status(id: int, db: Session = Depends(get_db)):
     avg_service = int(round(estimate_next_service_minutes(db, patient.doctor_id)))
 
     return schemas.LiveQueueStatus(
-        patient=schemas.QueuePatient(
-            id=patient.id,
-            name=patient.name,
-            priority=patient.priority,
-            status=patient.status,
+        patient=map_queue_patient(
+            db,
+            patient,
             queue_number=token_number,
-            symptoms=patient.symptoms,
             estimated_wait_minutes=eta,
         ),
         current_token_id=now_serving.id if now_serving else None,

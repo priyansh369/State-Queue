@@ -3,10 +3,10 @@ from datetime import datetime
 from sqlalchemy import (
     Column,
     DateTime,
-    Enum,
     ForeignKey,
     Integer,
     String,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 
@@ -45,6 +45,9 @@ class User(Base):
 
 class Patient(Base):
     __tablename__ = "patients"
+    __table_args__ = (
+        UniqueConstraint("doctor_id", "queue_number", name="uq_patient_doctor_queue"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
@@ -61,6 +64,7 @@ class Patient(Base):
 
     doctor = relationship("User", back_populates="doctor_patients")
     appointments = relationship("Appointment", back_populates="patient")
+    audit_logs = relationship("AuditLog", back_populates="patient")
 
 
 class Appointment(Base):
@@ -77,4 +81,16 @@ class Appointment(Base):
 
     patient = relationship("Patient", back_populates="appointments")
     doctor = relationship("User", back_populates="doctor_appointments")
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    action = Column(String, nullable=False)
+    patient_id = Column(Integer, ForeignKey("patients.id"), nullable=True, index=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    patient = relationship("Patient", back_populates="audit_logs")
 

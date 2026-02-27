@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import api from "../../utils/api";
-import { TextInput, Select } from "../../components/common/FormControls";
+import { Select, TextInput } from "../../components/common/FormControls";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 import StatCard from "../../components/common/StatCard";
 import Table from "../../components/common/Table";
-import { useAuth } from "../../state/AuthContext";
 import { subscribeQueueUpdates } from "../../utils/realtime";
+import api from "../../utils/api";
+
+const REFRESH_INTERVAL = 30000;
 
 export default function PatientDashboard({ showBooking }) {
-  const { user } = useAuth();
   const [form, setForm] = useState({
     name: "",
     age: "",
@@ -21,42 +22,79 @@ export default function PatientDashboard({ showBooking }) {
   const [appointments, setAppointments] = useState([]);
   const [currentStatus, setCurrentStatus] = useState(null);
   const [live, setLive] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const handleChange = (field, value) =>
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const handleChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const loadAppointments = async (patientId) => {
-    try {
-      const res = await api.get(`/patient/appointments/${patientId}`);
-      setAppointments(res.data);
-    } catch (e) {
-      console.error(e);
-    }
+    const response = await api.get(`/patient/appointments/${patientId}`);
+    setAppointments(response.data);
   };
 
   const loadLiveStatus = async (patientId) => {
+    const response = await api.get(`/patient/live-status/${patientId}`);
+    setLive(response.data);
+    setCurrentStatus(response.data.patient);
+  };
+
+  const loadCurrentPatientData = async ({ background = false } = {}) => {
+    if (background) setIsRefreshing(true);
+    else setIsLoading(true);
     try {
-      const res = await api.get(`/patient/live-status/${patientId}`);
-      setLive(res.data);
-      setCurrentStatus(res.data.patient);
-    } catch (e) {
-      console.error(e);
+      const storedPatientId = localStorage.getItem("smarthospital_patient_id");
+      const patientId = Number(storedPatientId);
+      if (!Number.isFinite(patientId) || patientId <= 0) return;
+      await Promise.all([loadLiveStatus(patientId), loadAppointments(patientId)]);
+    } catch (error) {
+      toast.error(error?.response?.data?.error?.message || "Failed to refresh patient data");
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
     }
   };
 
-  const handleBook = async (e) => {
-    e.preventDefault();
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await api.get("/auth/doctors");
+        setDoctors(response.data.map((doctor) => ({ value: doctor.id, label: doctor.name })));
+      } catch (error) {
+        toast.error(error?.response?.data?.error?.message || "Failed to load doctors");
+      }
+    })();
+    loadCurrentPatientData();
+  }, []);
+
+  useEffect(() => {
+    if (!currentStatus?.id) return undefined;
+    const interval = setInterval(() => {
+      loadCurrentPatientData({ background: true });
+    }, REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [currentStatus?.id]);
+
+  useEffect(() => {
+    if (!currentStatus?.id) return undefined;
+    const unsubscribe = subscribeQueueUpdates((event) => {
+      if (event?.type === "queue_update") {
+        loadCurrentPatientData({ background: true });
+      }
+    });
+    return () => unsubscribe();
+  }, [currentStatus?.id]);
+
+  const handleBook = async (event) => {
+    event.preventDefault();
     try {
       const payload = {
         ...form,
         age: Number(form.age),
         doctor_id: Number(form.doctor_id),
       };
-      const res = await api.post("/patient/book", payload);
-      toast.success(
-        `Booked. Queue #${res.data.queue_number}, status ${res.data.status}`
-      );
-      localStorage.setItem("smarthospital_patient_id", String(res.data.id));
+      const response = await api.post("/patient/book", payload);
+      toast.success(`Booked successfully with queue #${response.data.queue_number}`);
+      localStorage.setItem("smarthospital_patient_id", String(response.data.id));
       setForm({
         name: "",
         age: "",
@@ -65,100 +103,49 @@ export default function PatientDashboard({ showBooking }) {
         priority: "normal",
         doctor_id: "",
       });
-      await loadLiveStatus(res.data.id);
-      await loadAppointments(res.data.id);
-    } catch (e) {
-      console.error(e);
-      toast.error("Booking failed");
+      await loadCurrentPatientData({ background: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.error?.message || "Booking failed");
     }
   };
 
-  useEffect(() => {
-    // load doctor list for dropdown
-    (async () => {
-      try {
-        const res = await api.get("/auth/doctors");
-        setDoctors(res.data.map((d) => ({ value: d.id, label: d.name })));
-      } catch (e) {
-        console.error("Failed to load doctors", e);
-      }
-    })();
-
-    const storedPatientId = localStorage.getItem("smarthospital_patient_id");
-    if (storedPatientId) {
-      const pid = Number(storedPatientId);
-      if (!Number.isNaN(pid) && pid > 0) {
-        loadLiveStatus(pid).catch(() => {});
-        loadAppointments(pid).catch(() => {});
-      }
-    }
-  }, []);
-
-  // Short polling every 5 seconds (hackathon-safe).
-  useEffect(() => {
-    if (!currentStatus?.id) return undefined;
-    const pid = currentStatus.id;
-    const interval = setInterval(() => {
-      loadLiveStatus(pid).catch(() => {});
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [currentStatus?.id]);
-
-  // WebSocket sync: instant refresh when queue changes.
-  useEffect(() => {
-    if (!currentStatus?.id) return undefined;
-    const unsubscribe = subscribeQueueUpdates((evt) => {
-      if (evt?.type !== "queue_update") return;
-      loadLiveStatus(currentStatus.id).catch(() => {});
-    });
-    return () => unsubscribe();
-  }, [currentStatus?.id]);
-
-  const nowServingToken =
-    live?.current_token_queue_number != null ? live.current_token_queue_number : "-";
-  const waitingCount = live?.waiting_count != null ? live.waiting_count : "-";
+  if (isLoading) return <LoadingSpinner label="Loading patient dashboard..." />;
 
   return (
     <div className="panel">
-      <h2>Patient Dashboard</h2>
+      <div className="row-between">
+        <h2>Patient Dashboard</h2>
+        {isRefreshing ? <LoadingSpinner label="Refreshing..." /> : null}
+      </div>
       <div className="grid-2">
         <div>
-          <StatCard
-            label="Queue Number"
-            value={currentStatus ? currentStatus.queue_number : "-"}
-          />
-          <StatCard
-            label="Status"
-            value={currentStatus ? currentStatus.status : "-"}
-          />
+          <StatCard label="Queue Number" value={currentStatus ? currentStatus.queue_number : "-"} />
+          <StatCard label="Status" value={currentStatus ? currentStatus.status : "-"} />
           <StatCard
             label="Estimated Wait (min)"
-            value={
-              currentStatus ? currentStatus.estimated_wait_minutes : "-"
-            }
+            value={currentStatus ? currentStatus.estimated_wait_minutes : "-"}
           />
-          <StatCard label="Now Serving" value={nowServingToken} />
-          <StatCard label="Total Waiting (Doctor)" value={waitingCount} />
+          <StatCard
+            label="Now Serving"
+            value={live?.current_token_queue_number != null ? live.current_token_queue_number : "-"}
+          />
+          <StatCard label="Total Waiting (Doctor)" value={live?.waiting_count ?? "-"} />
         </div>
-        {showBooking && (
+        {showBooking ? (
           <div className="card">
             <h3>Book Appointment</h3>
             <form onSubmit={handleBook}>
-              <TextInput
-                label="Name"
-                value={form.name}
-                onChange={(v) => handleChange("name", v)}
-              />
+              <TextInput label="Name" value={form.name} onChange={(value) => handleChange("name", value)} />
               <TextInput
                 label="Age"
                 value={form.age}
-                onChange={(v) => handleChange("age", v)}
+                onChange={(value) => handleChange("age", value)}
                 type="number"
               />
               <Select
                 label="Gender"
                 value={form.gender}
-                onChange={(v) => handleChange("gender", v)}
+                onChange={(value) => handleChange("gender", value)}
                 options={[
                   { value: "male", label: "Male" },
                   { value: "female", label: "Female" },
@@ -168,12 +155,12 @@ export default function PatientDashboard({ showBooking }) {
               <TextInput
                 label="Symptoms"
                 value={form.symptoms}
-                onChange={(v) => handleChange("symptoms", v)}
+                onChange={(value) => handleChange("symptoms", value)}
               />
               <Select
                 label="Priority"
                 value={form.priority}
-                onChange={(v) => handleChange("priority", v)}
+                onChange={(value) => handleChange("priority", value)}
                 options={[
                   { value: "normal", label: "Normal" },
                   { value: "emergency", label: "Emergency" },
@@ -182,13 +169,13 @@ export default function PatientDashboard({ showBooking }) {
               <Select
                 label="Doctor"
                 value={form.doctor_id}
-                onChange={(v) => handleChange("doctor_id", v)}
+                onChange={(value) => handleChange("doctor_id", value)}
                 options={doctors}
               />
               <button className="primary-btn">Book Appointment</button>
             </form>
           </div>
-        )}
+        ) : null}
       </div>
 
       <div className="card mt-lg">
@@ -197,11 +184,7 @@ export default function PatientDashboard({ showBooking }) {
           rowKey="id"
           columns={[
             { key: "id", title: "ID", dataIndex: "id" },
-            {
-              key: "date",
-              title: "Date",
-              dataIndex: "appointment_date",
-            },
+            { key: "date", title: "Date", dataIndex: "appointment_date" },
             { key: "status", title: "Status", dataIndex: "status" },
           ]}
           data={appointments}
@@ -210,4 +193,3 @@ export default function PatientDashboard({ showBooking }) {
     </div>
   );
 }
-

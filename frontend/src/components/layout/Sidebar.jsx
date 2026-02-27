@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "../../state/AuthContext";
 
-export default function Sidebar({ links }) {
+export default function Sidebar({ links, open, onClose }) {
   const { logout } = useAuth();
   const navigate = useNavigate();
 
@@ -11,13 +11,16 @@ export default function Sidebar({ links }) {
   };
 
   return (
-    <aside className="sidebar">
+    <>
+      {open && <button className="sidebar-overlay" onClick={onClose} aria-label="Close menu" />}
+      <aside className={`sidebar ${open ? "sidebar-open" : ""}`}>
       <div className="sidebar-header">Smart Hospital</div>
       <nav className="sidebar-nav">
         {links.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}
+            onClick={onClose}
             className={({ isActive }) =>
               "sidebar-link" + (isActive ? " sidebar-link-active" : "")
             }
@@ -29,7 +32,8 @@ export default function Sidebar({ links }) {
       <button className="sidebar-logout" onClick={handleLogout}>
         Logout
       </button>
-    </aside>
+      </aside>
+    </>
   );
 }
 

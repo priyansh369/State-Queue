@@ -2,23 +2,20 @@ from __future__ import annotations
 
 from fastapi import BackgroundTasks
 
-from .socket_manager import manager
+from .websocket_manager import manager
 
 
 def emit_queue_update(
     background_tasks: BackgroundTasks,
     *,
-    reason: str,
-    doctor_id: int | None = None,
-    patient_id: int | None = None,
+    event_type: str,
+    data: dict,
 ) -> None:
     background_tasks.add_task(
-        manager.broadcast_json,
+        manager.broadcast,
         {
-            "type": "queue_update",
-            "reason": reason,
-            "doctor_id": doctor_id,
-            "patient_id": patient_id,
+            "type": event_type,
+            "data": data,
         },
     )
 

@@ -1,6 +1,5 @@
-from datetime import datetime
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -8,6 +7,14 @@ from ..auth_utils import require_role
 from ..database import get_db
 from ..ml_engine import compute_patient_eta_minutes, compute_queue_estimates
 from ..realtime import emit_queue_update
+from ..services.hospital import (
+    create_appointment_for_patient,
+    create_patient_with_queue,
+    dashboard_analytics,
+    map_queue_patient,
+    write_audit_log,
+)
+from ..ws_payloads import patient_payload
 
 router = APIRouter(prefix="/reception", tags=["reception"])
 
@@ -19,43 +26,30 @@ def register_patient(
     db: Session = Depends(get_db),
     current_user=Depends(require_role(models.UserRoleEnum.RECEPTIONIST)),
 ):
-    max_queue = (
-        db.query(models.Patient.queue_number)
-        .filter(models.Patient.doctor_id == patient_in.doctor_id)
-        .order_by(models.Patient.queue_number.desc())
-        .first()
-    )
-    next_queue = (max_queue[0] if max_queue else 0) + 1
-
-    patient = models.Patient(
-        name=patient_in.name,
-        age=patient_in.age,
-        gender=patient_in.gender,
-        symptoms=patient_in.symptoms,
-        priority=patient_in.priority,
-        status=models.StatusEnum.WAITING,
-        queue_number=next_queue,
-        doctor_id=patient_in.doctor_id,
-    )
-    db.add(patient)
-    db.commit()
-    db.refresh(patient)
-
-    # Create appointment record so ML has a consistent source.
-    appointment = models.Appointment(
-        patient_id=patient.id,
-        doctor_id=patient_in.doctor_id,
-        appointment_date=datetime.utcnow(),
-        status=models.StatusEnum.WAITING,
-    )
-    db.add(appointment)
-    db.commit()
+    try:
+        patient = create_patient_with_queue(
+            db,
+            name=patient_in.name,
+            age=patient_in.age,
+            gender=patient_in.gender,
+            symptoms=patient_in.symptoms,
+            priority=patient_in.priority,
+            doctor_id=patient_in.doctor_id,
+        )
+        create_appointment_for_patient(db, patient_id=patient.id, doctor_id=patient_in.doctor_id)
+        db.commit()
+        db.refresh(patient)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Unable to allocate queue number. Please retry.",
+        )
 
     emit_queue_update(
         background_tasks,
-        reason="walkin_registered",
-        doctor_id=patient.doctor_id,
-        patient_id=patient.id,
+        event_type="NEW_APPOINTMENT",
+        data=patient_payload(patient),
     )
     return patient
 
@@ -69,13 +63,10 @@ def get_full_queue(
     if doctor_id is not None:
         estimates = compute_queue_estimates(db, doctor_id)
         return [
-            schemas.QueuePatient(
-                id=e.patient.id,
-                name=e.patient.name,
-                priority=e.patient.priority,
-                status=e.patient.status,
+            map_queue_patient(
+                db,
+                e.patient,
                 queue_number=idx + 1,
-                symptoms=e.patient.symptoms,
                 estimated_wait_minutes=e.eta_minutes,
             )
             for idx, e in enumerate(estimates)
@@ -98,13 +89,10 @@ def get_full_queue(
             token_by_id[e.patient.id] = idx + 1
 
     return [
-        schemas.QueuePatient(
-            id=p.id,
-            name=p.name,
-            priority=p.priority,
-            status=p.status,
+        map_queue_patient(
+            db,
+            p,
             queue_number=token_by_id.get(p.id, p.queue_number),
-            symptoms=p.symptoms,
             estimated_wait_minutes=compute_patient_eta_minutes(db, p),
         )
         for p in patients
@@ -132,13 +120,18 @@ def update_priority(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
     patient.priority = body.priority
     db.add(patient)
+    write_audit_log(
+        db,
+        user_id=current_user.id,
+        action=f"CHANGE_PRIORITY_TO_{body.priority.upper()}",
+        patient_id=patient.id,
+    )
     db.commit()
     db.refresh(patient)
     emit_queue_update(
         background_tasks,
-        reason="priority_updated",
-        doctor_id=patient.doctor_id,
-        patient_id=patient.id,
+        event_type="PRIORITY_CHANGED",
+        data=patient_payload(patient),
     )
     return patient
 
@@ -166,12 +159,17 @@ def cancel_patient(
         appointment.status = models.StatusEnum.CANCELLED
         db.add(appointment)
 
+    write_audit_log(
+        db,
+        user_id=current_user.id,
+        action="CANCEL_APPOINTMENT",
+        patient_id=patient.id,
+    )
     db.commit()
     emit_queue_update(
         background_tasks,
-        reason="patient_cancelled",
-        doctor_id=patient.doctor_id,
-        patient_id=patient.id,
+        event_type="APPOINTMENT_CANCELLED",
+        data=patient_payload(patient),
     )
     return {"detail": "Cancelled"}
 
@@ -214,10 +212,28 @@ def reception_dashboard_stats(
         .filter(models.Patient.status == models.StatusEnum.COMPLETED)
         .count()
     )
+    analytics = dashboard_analytics(db)
     return schemas.DashboardStats(
         total_patients=total_patients,
         waiting=waiting,
         emergency=emergency,
         completed=completed,
+        **analytics,
     )
+
+
+@router.get("/audit-logs", response_model=list[schemas.AuditLogOut])
+def list_audit_logs(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role(models.UserRoleEnum.RECEPTIONIST)),
+    limit: int = 100,
+):
+    safe_limit = max(1, min(limit, 200))
+    logs = (
+        db.query(models.AuditLog)
+        .order_by(models.AuditLog.timestamp.desc())
+        .limit(safe_limit)
+        .all()
+    )
+    return logs
 

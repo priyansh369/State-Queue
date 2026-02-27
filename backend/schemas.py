@@ -1,17 +1,38 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class UserBase(BaseModel):
-    name: str
+    name: str = Field(min_length=2, max_length=120)
     email: EmailStr
+
+    @field_validator("name")
+    @classmethod
+    def sanitize_name(cls, value: str) -> str:
+        cleaned = " ".join(value.strip().split())
+        if not cleaned:
+            raise ValueError("Name is required")
+        return cleaned
 
 
 class UserCreate(UserBase):
-    password: str
-    role: str
+    password: str = Field(min_length=8, max_length=72)
+    role: Literal["patient", "doctor", "receptionist"]
+
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        has_upper = any(ch.isupper() for ch in value)
+        has_lower = any(ch.islower() for ch in value)
+        has_digit = any(ch.isdigit() for ch in value)
+        has_special = any(not ch.isalnum() for ch in value)
+        if not (has_upper and has_lower and has_digit and has_special):
+            raise ValueError(
+                "Password must include uppercase, lowercase, number, and special character"
+            )
+        return value
 
 
 class UserLogin(BaseModel):
@@ -22,9 +43,7 @@ class UserLogin(BaseModel):
 class UserOut(UserBase):
     id: int
     role: str
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Token(BaseModel):
@@ -36,12 +55,20 @@ class Token(BaseModel):
 
 
 class PatientBase(BaseModel):
-    name: str
-    age: int
-    gender: str
-    symptoms: str
-    priority: str = "normal"
-    doctor_id: int
+    name: str = Field(min_length=2, max_length=120)
+    age: int = Field(ge=0, le=130)
+    gender: Literal["male", "female", "other"]
+    symptoms: str = Field(min_length=2, max_length=800)
+    priority: Literal["normal", "emergency"] = "normal"
+    doctor_id: int = Field(gt=0)
+
+    @field_validator("name", "symptoms")
+    @classmethod
+    def sanitize_text(cls, value: str) -> str:
+        cleaned = " ".join(value.strip().split())
+        if not cleaned:
+            raise ValueError("Field cannot be empty")
+        return cleaned
 
 
 class PatientCreate(PatientBase):
@@ -53,9 +80,7 @@ class PatientOut(PatientBase):
     status: str
     queue_number: int
     created_at: datetime
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class AppointmentBase(BaseModel):
@@ -71,9 +96,7 @@ class AppointmentCreate(AppointmentBase):
 class AppointmentOut(AppointmentBase):
     id: int
     status: str
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class QueuePatient(BaseModel):
@@ -84,9 +107,9 @@ class QueuePatient(BaseModel):
     queue_number: int
     symptoms: str
     estimated_wait_minutes: int
-
-    class Config:
-        orm_mode = True
+    waiting_minutes: int = 0
+    escalation_required: bool = False
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DashboardStats(BaseModel):
@@ -94,27 +117,38 @@ class DashboardStats(BaseModel):
     waiting: int
     emergency: int
     completed: int
+    total_patients_today: int
+    average_wait_minutes: int
+    emergency_percentage: float
+    completion_rate: float
+    overdue_emergencies: int = 0
 
 
 class ReceptionRegisterPatient(BaseModel):
-    name: str
-    age: int
-    gender: str
-    symptoms: str
-    priority: str = "normal"
-    doctor_id: int
+    name: str = Field(min_length=2, max_length=120)
+    age: int = Field(ge=0, le=130)
+    gender: Literal["male", "female", "other"]
+    symptoms: str = Field(min_length=2, max_length=800)
+    priority: Literal["normal", "emergency"] = "normal"
+    doctor_id: int = Field(gt=0)
+
+    @field_validator("name", "symptoms")
+    @classmethod
+    def sanitize_text(cls, value: str) -> str:
+        cleaned = " ".join(value.strip().split())
+        if not cleaned:
+            raise ValueError("Field cannot be empty")
+        return cleaned
 
 
 class UpdatePriority(BaseModel):
-    priority: str
+    priority: Literal["normal", "emergency"]
 
 
 class DoctorOut(BaseModel):
     id: int
     name: str
-
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class LiveQueueStatus(BaseModel):
@@ -124,3 +158,11 @@ class LiveQueueStatus(BaseModel):
     waiting_count: int
     doctor_average_service_minutes: int
 
+
+class AuditLogOut(BaseModel):
+    id: int
+    user_id: int
+    action: str
+    patient_id: Optional[int]
+    timestamp: datetime
+    model_config = ConfigDict(from_attributes=True)

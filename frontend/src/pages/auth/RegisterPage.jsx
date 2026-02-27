@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../state/AuthContext";
 
 export default function RegisterPage() {
@@ -12,16 +12,14 @@ export default function RegisterPage() {
   const [role, setRole] = useState("patient");
   const [loading, setLoading] = useState(false);
 
-  const onSubmit = async (e) => {
-    e.preventDefault();
+  const onSubmit = async (event) => {
+    event.preventDefault();
     try {
       setLoading(true);
       await register({ name, email, password, role });
       navigate("/login");
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error(err);
-      toast.error("Registration failed");
+    } catch (error) {
+      toast.error(error?.response?.data?.error?.message || "Registration failed");
     } finally {
       setLoading(false);
     }
@@ -37,21 +35,17 @@ export default function RegisterPage() {
           <h1 className="mt-4 text-2xl font-semibold tracking-tight text-slate-900">
             Create account
           </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Pick a role and get started.
-          </p>
+          <p className="mt-1 text-sm text-slate-600">Pick a role and get started.</p>
         </div>
 
         <div className="bg-white/80 backdrop-blur rounded-2xl shadow-xl shadow-slate-900/5 border border-slate-200 p-6 sm:p-8">
           <form onSubmit={onSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700">
-                Full name
-              </label>
+              <label className="block text-sm font-medium text-slate-700">Full name</label>
               <input
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(event) => setName(event.target.value)}
                 placeholder="Jane Doe"
                 autoComplete="name"
                 required
@@ -59,14 +53,12 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">
-                Email
-              </label>
+              <label className="block text-sm font-medium text-slate-700">Email</label>
               <input
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(event) => setEmail(event.target.value)}
                 placeholder="you@hospital.com"
                 autoComplete="email"
                 required
@@ -74,28 +66,24 @@ export default function RegisterPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">
-                Password
-              </label>
+              <label className="block text-sm font-medium text-slate-700">Password</label>
               <input
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Create a strong password"
+                onChange={(event) => setPassword(event.target.value)}
+                placeholder="Min 8 chars with upper/lower/number/symbol"
                 autoComplete="new-password"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">
-                Role
-              </label>
+              <label className="block text-sm font-medium text-slate-700">Role</label>
               <select
                 className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
                 value={role}
-                onChange={(e) => setRole(e.target.value)}
+                onChange={(event) => setRole(event.target.value)}
               >
                 <option value="patient">Patient</option>
                 <option value="doctor">Doctor</option>
@@ -127,4 +115,3 @@ export default function RegisterPage() {
     </div>
   );
 }
-

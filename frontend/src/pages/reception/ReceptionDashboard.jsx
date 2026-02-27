@@ -1,15 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import api from "../../utils/api";
+import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
 import { Select, TextInput } from "../../components/common/FormControls";
+import LoadingSpinner from "../../components/common/LoadingSpinner";
 import StatCard from "../../components/common/StatCard";
 import Table from "../../components/common/Table";
-import { Bar, BarChart, CartesianGrid, Tooltip, XAxis, YAxis } from "recharts";
-import { subscribeQueueUpdates } from "../../utils/realtime";
+import api from "../../utils/api";
 
 export default function ReceptionDashboard() {
   const [stats, setStats] = useState(null);
   const [queue, setQueue] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
   const [form, setForm] = useState({
     name: "",
     age: "",
@@ -21,87 +22,117 @@ export default function ReceptionDashboard() {
   const [doctorOptions, setDoctorOptions] = useState([]);
   const [filterDoctorOptions, setFilterDoctorOptions] = useState([]);
   const [filterDoctorId, setFilterDoctorId] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const filterDoctorIdRef = useRef("");
+  const reconnectRef = useRef(null);
 
-  const handleChange = (field, value) =>
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const handleChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
   const loadStats = async () => {
-    const res = await api.get("/reception/dashboard/stats");
-    setStats(res.data);
+    const response = await api.get("/reception/dashboard/stats");
+    setStats(response.data);
   };
 
   const loadQueue = async () => {
     const currentFilter = filterDoctorIdRef.current;
-    const res = await api.get(
-      currentFilter
-        ? `/reception/queue?doctor_id=${Number(currentFilter)}`
-        : "/reception/queue"
+    const response = await api.get(
+      currentFilter ? `/reception/queue?doctor_id=${Number(currentFilter)}` : "/reception/queue"
     );
-    setQueue(res.data);
+    setQueue(response.data);
   };
+
+  const loadAuditLogs = async () => {
+    const response = await api.get("/reception/audit-logs?limit=30");
+    setAuditLogs(response.data);
+  };
+
+  const loadAll = useCallback(async ({ background = false } = {}) => {
+    if (background) setIsRefreshing(true);
+    else setIsLoading(true);
+    try {
+      await Promise.all([loadStats(), loadQueue(), loadAuditLogs()]);
+    } catch (error) {
+      toast.error(error?.response?.data?.error?.message || "Failed to load reception dashboard");
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     filterDoctorIdRef.current = filterDoctorId;
   }, [filterDoctorId]);
 
   useEffect(() => {
-    loadStats();
-    loadQueue();
-
-    // fetch doctors for dropdown
+    loadAll();
     (async () => {
       try {
-        const res = await api.get("/reception/doctors");
-        const registerOpts = res.data.map((d) => ({
-          value: String(d.id),
-          label: d.name,
+        const response = await api.get("/reception/doctors");
+        const registerOpts = response.data.map((doctor) => ({
+          value: String(doctor.id),
+          label: doctor.name,
         }));
-        const filterOpts = [
-          { value: "", label: "All doctors" },
-          ...registerOpts,
-        ];
         setDoctorOptions(registerOpts);
-        setFilterDoctorOptions(filterOpts);
-      } catch (e) {
-        console.error("Failed to load doctors", e);
+        setFilterDoctorOptions([{ value: "", label: "All doctors" }, ...registerOpts]);
+      } catch (error) {
+        toast.error(error?.response?.data?.error?.message || "Failed to load doctors");
       }
     })();
 
-    // Realtime sync: when anyone books/registers/completes, refresh instantly.
-    const unsubscribe = subscribeQueueUpdates((evt) => {
-      if (evt?.type !== "queue_update") return;
-      loadStats().catch(() => {});
-      loadQueue().catch(() => {});
-    });
-
-    // Fallback polling (in case websocket is blocked)
-    const interval = setInterval(() => {
-      loadStats().catch(() => {});
-      loadQueue().catch(() => {});
-    }, 10000);
-
-    return () => {
-      unsubscribe();
-      clearInterval(interval);
+    let socket = null;
+    let closedByUser = false;
+    const connect = () => {
+      socket = new WebSocket("ws://localhost:8000/ws");
+      socket.onmessage = (evt) => {
+        try {
+          const message = JSON.parse(evt.data);
+          const payload = message?.data;
+          if (!payload) return;
+          if (
+            filterDoctorIdRef.current &&
+            Number(filterDoctorIdRef.current) !== Number(payload.doctor_id)
+          ) {
+            return;
+          }
+          if (message.type === "NEW_APPOINTMENT") {
+            setQueue((prev) => {
+              if (prev.some((item) => Number(item.id) === Number(payload.id))) return prev;
+              return [...prev, payload].sort((a, b) => Number(a.queue_number) - Number(b.queue_number));
+            });
+            return;
+          }
+          loadAll({ background: true });
+        } catch {
+          // ignore bad payloads
+        }
+      };
+      socket.onclose = () => {
+        if (closedByUser) return;
+        reconnectRef.current = setTimeout(connect, 3000);
+      };
     };
-  }, []);
 
-  // Reload queue when filter changes
+    connect();
+    return () => {
+      closedByUser = true;
+      if (reconnectRef.current) clearTimeout(reconnectRef.current);
+      if (socket && socket.readyState < 2) socket.close();
+    };
+  }, [loadAll]);
+
   useEffect(() => {
     loadQueue().catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterDoctorId]);
 
-  const handleRegister = async (e) => {
-    e.preventDefault();
+  const handleRegister = async (event) => {
+    event.preventDefault();
     try {
-      const payload = {
+      await api.post("/reception/register-patient", {
         ...form,
         age: Number(form.age),
         doctor_id: Number(form.doctor_id),
-      };
-      await api.post("/reception/register-patient", payload);
+      });
       toast.success("Patient registered");
       setForm({
         name: "",
@@ -111,11 +142,9 @@ export default function ReceptionDashboard() {
         priority: "normal",
         doctor_id: "",
       });
-      await loadStats();
-      await loadQueue();
-    } catch (e) {
-      console.error(e);
-      toast.error("Registration failed");
+      await loadAll({ background: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.error?.message || "Registration failed");
     }
   };
 
@@ -123,70 +152,62 @@ export default function ReceptionDashboard() {
     try {
       await api.put(`/reception/update-priority/${id}`, { priority });
       toast.success("Priority updated");
-      await loadStats();
-      await loadQueue();
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to update");
+      await loadAll({ background: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.error?.message || "Failed to update priority");
     }
   };
 
   const cancel = async (id) => {
     try {
       await api.delete(`/reception/cancel/${id}`);
-      toast.success("Cancelled");
-      await loadStats();
-      await loadQueue();
-    } catch (e) {
-      console.error(e);
-      toast.error("Failed to cancel");
+      toast.success("Appointment cancelled");
+      await loadAll({ background: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.error?.message || "Failed to cancel appointment");
     }
   };
 
   const chartData = stats
     ? [
-        { name: "Total", value: stats.total_patients },
-        { name: "Waiting", value: stats.waiting },
-        { name: "Emergency", value: stats.emergency },
-        { name: "Completed", value: stats.completed },
+        { name: "Today", value: stats.total_patients_today },
+        { name: "Avg Wait", value: stats.average_wait_minutes },
+        { name: "Emerg %", value: stats.emergency_percentage },
+        { name: "Completion %", value: stats.completion_rate },
       ]
     : [];
 
+  if (isLoading) return <LoadingSpinner label="Loading reception dashboard..." />;
+
   return (
     <div className="panel">
-      <h2>Reception Dashboard</h2>
-      <div className="grid-3">
-        <StatCard
-          label="Total Patients"
-          value={stats ? stats.total_patients : "-"}
-        />
-        <StatCard label="Waiting" value={stats ? stats.waiting : "-"} />
-        <StatCard
-          label="Emergency"
-          value={stats ? stats.emergency : "-"}
-          accent="danger"
-        />
+      <div className="row-between">
+        <h2>Reception Dashboard</h2>
+        {isRefreshing ? <LoadingSpinner label="Refreshing..." /> : null}
+      </div>
+
+      <div className="grid-4">
+        <StatCard label="Total" value={stats?.total_patients ?? "-"} />
+        <StatCard label="Waiting" value={stats?.waiting ?? "-"} />
+        <StatCard label="Emergency" value={stats?.emergency ?? "-"} accent="danger" />
+        <StatCard label="Completed" value={stats?.completed ?? "-"} accent="success" />
       </div>
 
       <div className="grid-2 mt-lg">
         <div className="card">
           <h3>Register New Patient</h3>
           <form onSubmit={handleRegister}>
-            <TextInput
-              label="Name"
-              value={form.name}
-              onChange={(v) => handleChange("name", v)}
-            />
+            <TextInput label="Name" value={form.name} onChange={(value) => handleChange("name", value)} />
             <TextInput
               label="Age"
               value={form.age}
-              onChange={(v) => handleChange("age", v)}
+              onChange={(value) => handleChange("age", value)}
               type="number"
             />
             <Select
               label="Gender"
               value={form.gender}
-              onChange={(v) => handleChange("gender", v)}
+              onChange={(value) => handleChange("gender", value)}
               options={[
                 { value: "male", label: "Male" },
                 { value: "female", label: "Female" },
@@ -196,12 +217,12 @@ export default function ReceptionDashboard() {
             <TextInput
               label="Symptoms"
               value={form.symptoms}
-              onChange={(v) => handleChange("symptoms", v)}
+              onChange={(value) => handleChange("symptoms", value)}
             />
             <Select
               label="Priority"
               value={form.priority}
-              onChange={(v) => handleChange("priority", v)}
+              onChange={(value) => handleChange("priority", value)}
               options={[
                 { value: "normal", label: "Normal" },
                 { value: "emergency", label: "Emergency" },
@@ -210,7 +231,7 @@ export default function ReceptionDashboard() {
             <Select
               label="Doctor"
               value={form.doctor_id}
-              onChange={(v) => handleChange("doctor_id", v)}
+              onChange={(value) => handleChange("doctor_id", value)}
               options={doctorOptions}
             />
             <button className="primary-btn">Register</button>
@@ -218,7 +239,7 @@ export default function ReceptionDashboard() {
         </div>
 
         <div className="card">
-          <h3>Overview</h3>
+          <h3>Analytics</h3>
           <BarChart width={380} height={220} data={chartData}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="name" />
@@ -250,28 +271,22 @@ export default function ReceptionDashboard() {
               key: "priority",
               title: "Priority",
               dataIndex: "priority",
-              render: (val, row) => (
-                <select
-                  value={val}
-                  onChange={(e) =>
-                    updatePriority(row.id, e.target.value)
-                  }
-                >
+              render: (value, row) => (
+                <select value={value} onChange={(event) => updatePriority(row.id, event.target.value)}>
                   <option value="normal">Normal</option>
                   <option value="emergency">Emergency</option>
                 </select>
               ),
             },
             {
-              key: "queue",
-              title: "Queue #",
-              dataIndex: "queue_number",
+              key: "waiting_minutes",
+              title: "Waiting (min)",
+              dataIndex: "waiting_minutes",
+              render: (value, row) =>
+                row.escalation_required ? <span className="blink-text">{value}</span> : value,
             },
-            {
-              key: "wait",
-              title: "Est. Wait (min)",
-              dataIndex: "estimated_wait_minutes",
-            },
+            { key: "queue", title: "Queue #", dataIndex: "queue_number" },
+            { key: "wait", title: "Est. Wait", dataIndex: "estimated_wait_minutes" },
             {
               key: "actions",
               title: "Actions",
@@ -286,7 +301,21 @@ export default function ReceptionDashboard() {
           data={queue}
         />
       </div>
+
+      <div className="card mt-lg">
+        <h3>Audit Logs</h3>
+        <Table
+          rowKey="id"
+          columns={[
+            { key: "id", title: "Log ID", dataIndex: "id" },
+            { key: "user_id", title: "User ID", dataIndex: "user_id" },
+            { key: "action", title: "Action", dataIndex: "action" },
+            { key: "patient_id", title: "Patient ID", dataIndex: "patient_id" },
+            { key: "timestamp", title: "Timestamp", dataIndex: "timestamp" },
+          ]}
+          data={auditLogs}
+        />
+      </div>
     </div>
   );
 }
-

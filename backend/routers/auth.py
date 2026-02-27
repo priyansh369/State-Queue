@@ -6,6 +6,7 @@ from .. import models, schemas
 from ..auth_utils import (
     create_access_token,
     get_password_hash,
+    is_bcrypt_hash,
     verify_password,
 )
 from ..database import get_db
@@ -52,6 +53,10 @@ def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
+    if not is_bcrypt_hash(user.password):
+        user.password = get_password_hash(form_data.password)
+        db.add(user)
+        db.commit()
     access_token = create_access_token({"sub": user.id, "role": user.role})
     return schemas.Token(
         access_token=access_token,
