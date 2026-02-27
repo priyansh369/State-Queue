@@ -17,6 +17,7 @@ export default function ReceptionDashboard() {
     priority: "normal",
     doctor_id: "",
   });
+  const [doctors, setDoctors] = useState([]);
 
   const handleChange = (field, value) =>
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -34,6 +35,16 @@ export default function ReceptionDashboard() {
   useEffect(() => {
     loadStats();
     loadQueue();
+
+    // fetch doctors for dropdown
+    (async () => {
+      try {
+        const res = await api.get("/auth/doctors");
+        setDoctors(res.data.map((d) => ({ value: d.id, label: d.name })));
+      } catch (e) {
+        console.error("Failed to load doctors", e);
+      }
+    })();
   }, []);
 
   const handleRegister = async (e) => {
@@ -150,11 +161,11 @@ export default function ReceptionDashboard() {
                 { value: "emergency", label: "Emergency" },
               ]}
             />
-            <TextInput
-              label="Doctor ID"
+            <Select
+              label="Doctor"
               value={form.doctor_id}
               onChange={(v) => handleChange("doctor_id", v)}
-              type="number"
+              options={doctors}
             />
             <button className="primary-btn">Register</button>
           </form>

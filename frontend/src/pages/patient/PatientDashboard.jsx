@@ -16,6 +16,7 @@ export default function PatientDashboard({ showBooking }) {
     priority: "normal",
     doctor_id: "",
   });
+  const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [currentStatus, setCurrentStatus] = useState(null);
 
@@ -69,6 +70,16 @@ export default function PatientDashboard({ showBooking }) {
   };
 
   useEffect(() => {
+    // load doctor list for dropdown
+    (async () => {
+      try {
+        const res = await api.get("/auth/doctors");
+        setDoctors(res.data.map((d) => ({ value: d.id, label: d.name })));
+      } catch (e) {
+        console.error("Failed to load doctors", e);
+      }
+    })();
+
     if (currentStatus?.id) {
       loadAppointments(currentStatus.id);
     }
@@ -133,11 +144,11 @@ export default function PatientDashboard({ showBooking }) {
                   { value: "emergency", label: "Emergency" },
                 ]}
               />
-              <TextInput
-                label="Doctor ID"
+              <Select
+                label="Doctor"
                 value={form.doctor_id}
                 onChange={(v) => handleChange("doctor_id", v)}
-                type="number"
+                options={doctors}
               />
               <button className="primary-btn">Book Appointment</button>
             </form>

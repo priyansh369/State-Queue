@@ -60,3 +60,10 @@ def login(
         name=user.name,
     )
 
+
+@router.get("/doctors", response_model=list[schemas.DoctorOut])
+def list_doctors(db: Session = Depends(get_db)):
+    """Return basic info for all users with role 'doctor'."""
+    doctors = db.query(models.User).filter(models.User.role == models.UserRoleEnum.DOCTOR).all()
+    return doctors
+

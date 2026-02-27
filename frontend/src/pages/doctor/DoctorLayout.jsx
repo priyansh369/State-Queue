@@ -4,7 +4,7 @@ import Header from "../../components/layout/Header";
 import DoctorDashboard from "./DoctorDashboard";
 
 export default function DoctorLayout() {
-  const links = [{ to: "/doctor", label: "Today&apos;s Queue" }];
+  const links = [{ to: "/doctor", label: "Today's Queue" }];
   return (
     <div className="app-shell">
       <Sidebar links={links} />
@@ -12,7 +12,7 @@ export default function DoctorLayout() {
         <Header />
         <div className="app-content">
           <Routes>
-            <Route path="/" element={<DoctorDashboard />} />
+            <Route index element={<DoctorDashboard />} />
           </Routes>
         </div>
       </main>

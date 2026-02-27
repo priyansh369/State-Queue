@@ -197,13 +197,26 @@ body {
   font-size: 0.9rem;
 }
 
-.primary-btn {
-  background: #3182ce;
-  color: #fff;
+/* password field toggle */
+.password-field .input-with-toggle {
+  position: relative;
 }
-
-.danger-btn {
-  background: #e53e3e;
+.password-field .input-with-toggle input {
+  width: 100%;
+  padding-right: 3.5rem; /* space for button */
+}
+.password-field .show-hide-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #3182ce;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 0.25rem;
+}
   color: #fff;
 }
 

@@ -25,6 +25,26 @@ export default function DoctorDashboard() {
     loadQueue();
   }, []);
 
+  // Keep dashboard in sync with actions from reception/patient by polling
+  // and reloading when the window regains focus.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadStats().catch(() => {});
+      loadQueue().catch(() => {});
+    }, 8000); // refresh every 8s
+
+    const onFocus = () => {
+      loadStats().catch(() => {});
+      loadQueue().catch(() => {});
+    };
+    window.addEventListener("focus", onFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, []);
+
   const markCompleted = async (id) => {
     try {
       await api.put(`/doctor/complete/${id}`);
@@ -60,7 +80,7 @@ export default function DoctorDashboard() {
       </div>
 
       <div className="card mt-lg">
-        <h3>Today&apos;s Queue</h3>
+        <h3>Today's Queue</h3>
         <Table
           rowKey="id"
           columns={[
