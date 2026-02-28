@@ -1,4 +1,5 @@
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy import case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -75,7 +76,10 @@ def get_full_queue(
     patients = (
         db.query(models.Patient)
         .filter(models.Patient.status == models.StatusEnum.WAITING)
-        .order_by(models.Patient.priority.desc(), models.Patient.queue_number.asc())
+        .order_by(
+            case((models.Patient.priority == models.PriorityEnum.EMERGENCY, 0), else_=1).asc(),
+            models.Patient.created_at.asc(),
+        )
         .all()
     )
     # build per-doctor token positions for display

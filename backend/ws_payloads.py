@@ -11,6 +11,7 @@ def patient_payload(patient: models.Patient) -> dict:
         "gender": patient.gender,
         "symptoms": patient.symptoms,
         "priority": patient.priority,
+        "priority_rank": 0 if patient.priority == models.PriorityEnum.EMERGENCY else 1,
         "status": patient.status,
         "queue_number": patient.queue_number,
         "doctor_id": patient.doctor_id,

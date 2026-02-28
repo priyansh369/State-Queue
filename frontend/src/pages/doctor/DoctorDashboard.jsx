@@ -49,17 +49,10 @@ export default function DoctorDashboard() {
       socket.onmessage = (evt) => {
         try {
           const message = JSON.parse(evt.data);
+          if (message?.type !== "appointment_update" && message?.type !== "queue_update") return;
           const payload = message?.data;
           if (!payload) return;
           if (payload.doctor_id && Number(payload.doctor_id) !== Number(user?.id)) return;
-
-          if (message.type === "NEW_APPOINTMENT") {
-            setQueue((prev) => {
-              if (prev.some((item) => Number(item.id) === Number(payload.id))) return prev;
-              return [...prev, payload].sort((a, b) => Number(a.queue_number) - Number(b.queue_number));
-            });
-            return;
-          }
           loadAll({ background: true });
         } catch {
           // ignore bad payloads
@@ -187,6 +180,7 @@ export default function DoctorDashboard() {
       <div className="card mt-lg">
         <h3>Queue</h3>
         <Table
+          className="table-queue"
           rowKey="id"
           columns={[
             { key: "id", title: "ID", dataIndex: "id" },
@@ -216,7 +210,11 @@ export default function DoctorDashboard() {
               key: "actions",
               title: "Actions",
               dataIndex: "id",
-              render: (_, row) => <button onClick={() => setSelected(row)}>View</button>,
+              render: (_, row) => (
+                <button className="secondary-btn" onClick={() => setSelected(row)}>
+                  View
+                </button>
+              ),
             },
           ]}
           data={queue}

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from .. import models, schemas
@@ -143,7 +144,10 @@ def start_serving_patient(
             models.Patient.doctor_id == current_user.id,
             models.Patient.status == models.StatusEnum.WAITING,
         )
-        .order_by(models.Patient.priority.desc(), models.Patient.queue_number.asc())
+        .order_by(
+            case((models.Patient.priority == models.PriorityEnum.EMERGENCY, 0), else_=1).asc(),
+            models.Patient.created_at.asc(),
+        )
         .first()
     )
     if top and top.id != patient.id:

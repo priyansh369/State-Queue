@@ -58,7 +58,15 @@ export default function PatientDashboard({ showBooking }) {
     (async () => {
       try {
         const response = await api.get("/auth/doctors");
-        setDoctors(response.data.map((doctor) => ({ value: doctor.id, label: doctor.name })));
+        const doctorOptions = response.data.map((doctor) => ({
+          value: String(doctor.id),
+          label: doctor.name,
+        }));
+        setDoctors(doctorOptions);
+        setForm((prev) => ({
+          ...prev,
+          doctor_id: prev.doctor_id || (doctorOptions[0]?.value ?? ""),
+        }));
       } catch (error) {
         toast.error(error?.response?.data?.error?.message || "Failed to load doctors");
       }
@@ -77,7 +85,7 @@ export default function PatientDashboard({ showBooking }) {
   useEffect(() => {
     if (!currentStatus?.id) return undefined;
     const unsubscribe = subscribeQueueUpdates((event) => {
-      if (event?.type === "queue_update") {
+      if (event?.type === "appointment_update" || event?.type === "queue_update") {
         loadCurrentPatientData({ background: true });
       }
     });
@@ -86,9 +94,14 @@ export default function PatientDashboard({ showBooking }) {
 
   const handleBook = async (event) => {
     event.preventDefault();
+    if (!form.doctor_id) {
+      toast.error("Please select a doctor");
+      return;
+    }
     try {
       const payload = {
         ...form,
+        patient_name: form.name,
         age: Number(form.age),
         doctor_id: Number(form.doctor_id),
       };
@@ -101,7 +114,7 @@ export default function PatientDashboard({ showBooking }) {
         gender: "male",
         symptoms: "",
         priority: "normal",
-        doctor_id: "",
+        doctor_id: doctors[0]?.value ?? "",
       });
       await loadCurrentPatientData({ background: true });
     } catch (error) {

@@ -14,8 +14,11 @@ def emit_queue_update(
     background_tasks.add_task(
         manager.broadcast,
         {
-            "type": event_type,
-            "data": data,
+            "type": "appointment_update",
+            "data": {
+                **data,
+                "event": event_type,
+            },
         },
     )
 

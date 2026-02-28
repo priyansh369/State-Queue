@@ -4,12 +4,6 @@ const api = axios.create({
   baseURL: "http://localhost:8000",
 });
 
-let unauthorizedHandler = null;
-
-export function setUnauthorizedHandler(handler) {
-  unauthorizedHandler = handler;
-}
-
 // Always attach JWT from localStorage if present
 api.interceptors.request.use((config) => {
   try {
@@ -32,12 +26,6 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const status = error?.response?.status;
-    const requestUrl = error?.config?.url || "";
-    const isAuthEndpoint = requestUrl.includes("/auth/login") || requestUrl.includes("/auth/register");
-    if ((status === 401 || status === 403) && unauthorizedHandler && !isAuthEndpoint) {
-      unauthorizedHandler(error);
-    }
     return Promise.reject(error);
   }
 );

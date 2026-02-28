@@ -43,10 +43,12 @@ def map_queue_patient(
         id=patient.id,
         name=patient.name,
         priority=patient.priority,
+        priority_rank=0 if patient.priority == models.PriorityEnum.EMERGENCY else 1,
         status=patient.status,
         queue_number=queue_number,
         symptoms=patient.symptoms,
         estimated_wait_minutes=estimated,
+        estimated_time=f"{estimated} min",
         waiting_minutes=waiting_minutes(patient),
         escalation_required=escalation_required(patient),
     )

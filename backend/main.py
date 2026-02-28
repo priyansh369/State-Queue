@@ -16,7 +16,7 @@ ensure_schema(engine)
 
 app = FastAPI(title="Smart Hospital Management System")
 
-cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:5173, http://localhost:5175, http://localhost:5174 ,http://127.0.0.1:5173")
 origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
 
 app.add_middleware(

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class UserBase(BaseModel):
@@ -55,7 +55,11 @@ class Token(BaseModel):
 
 
 class PatientBase(BaseModel):
-    name: str = Field(min_length=2, max_length=120)
+    name: str = Field(
+        min_length=2,
+        max_length=120,
+        validation_alias=AliasChoices("name", "patient_name"),
+    )
     age: int = Field(ge=0, le=130)
     gender: Literal["male", "female", "other"]
     symptoms: str = Field(min_length=2, max_length=800)
@@ -103,10 +107,12 @@ class QueuePatient(BaseModel):
     id: int
     name: str
     priority: str
+    priority_rank: int
     status: str
     queue_number: int
     symptoms: str
     estimated_wait_minutes: int
+    estimated_time: str
     waiting_minutes: int = 0
     escalation_required: bool = False
     model_config = ConfigDict(from_attributes=True)

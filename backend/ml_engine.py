@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Iterable
 
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from . import models
@@ -117,13 +116,17 @@ def estimate_next_service_minutes(db: Session, doctor_id: int) -> float:
 
 
 def doctor_queue(db: Session, doctor_id: int) -> list[models.Patient]:
+    priority_rank = case(
+        (models.Patient.priority == models.PriorityEnum.EMERGENCY, 0),
+        else_=1,
+    )
     return (
         db.query(models.Patient)
         .filter(
             models.Patient.doctor_id == doctor_id,
             models.Patient.status == models.StatusEnum.WAITING,
         )
-        .order_by(models.Patient.priority.desc(), models.Patient.queue_number.asc())
+        .order_by(priority_rank.asc(), models.Patient.created_at.asc())
         .all()
     )
 
@@ -138,27 +141,14 @@ def compute_queue_estimates(db: Session, doctor_id: int) -> list[QueueEstimate]:
     if not q:
         return []
 
-    service_min = estimate_next_service_minutes(db, doctor_id)
-
-    now = datetime.utcnow()
-    first = q[0]
-
-    # Remaining time for the currently served patient.
-    # If the doctor hasn't started, treat it as "no one is being served yet":
-    # - token #1 still shows 0
-    # - token #2 is 1 * service_min, token #3 is 2 * service_min, etc.
-    remaining_now_serving = 0.0
-    if first.started_serving_at:
-        elapsed = (now - first.started_serving_at).total_seconds() / 60.0
-        remaining_now_serving = _clamp(service_min - elapsed, 0.0, service_min)
-
     estimates: list[QueueEstimate] = []
     for idx, p in enumerate(q):
-        if idx == 0:
-            eta = 0
-        else:
-            eta = remaining_now_serving + idx * service_min
-        estimates.append(QueueEstimate(patient=p, eta_minutes=int(round(eta))))
+        # Queue ETA baseline: each position adds 10 minutes.
+        # Emergency gets reduced ETA while still remaining non-negative.
+        eta = idx * 10
+        if p.priority == models.PriorityEnum.EMERGENCY and eta > 0:
+            eta = max(0, eta - 5)
+        estimates.append(QueueEstimate(patient=p, eta_minutes=int(eta)))
     return estimates
 
 

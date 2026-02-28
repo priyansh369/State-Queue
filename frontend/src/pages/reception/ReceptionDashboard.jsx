@@ -74,6 +74,10 @@ export default function ReceptionDashboard() {
           label: doctor.name,
         }));
         setDoctorOptions(registerOpts);
+        setForm((prev) => ({
+          ...prev,
+          doctor_id: prev.doctor_id || (registerOpts[0]?.value ?? ""),
+        }));
         setFilterDoctorOptions([{ value: "", label: "All doctors" }, ...registerOpts]);
       } catch (error) {
         toast.error(error?.response?.data?.error?.message || "Failed to load doctors");
@@ -87,19 +91,13 @@ export default function ReceptionDashboard() {
       socket.onmessage = (evt) => {
         try {
           const message = JSON.parse(evt.data);
+          if (message?.type !== "appointment_update" && message?.type !== "queue_update") return;
           const payload = message?.data;
-          if (!payload) return;
           if (
+            payload?.doctor_id &&
             filterDoctorIdRef.current &&
             Number(filterDoctorIdRef.current) !== Number(payload.doctor_id)
           ) {
-            return;
-          }
-          if (message.type === "NEW_APPOINTMENT") {
-            setQueue((prev) => {
-              if (prev.some((item) => Number(item.id) === Number(payload.id))) return prev;
-              return [...prev, payload].sort((a, b) => Number(a.queue_number) - Number(b.queue_number));
-            });
             return;
           }
           loadAll({ background: true });
@@ -127,9 +125,14 @@ export default function ReceptionDashboard() {
 
   const handleRegister = async (event) => {
     event.preventDefault();
+    if (!form.doctor_id) {
+      toast.error("Please select a doctor");
+      return;
+    }
     try {
       await api.post("/reception/register-patient", {
         ...form,
+        patient_name: form.name,
         age: Number(form.age),
         doctor_id: Number(form.doctor_id),
       });
@@ -140,7 +143,7 @@ export default function ReceptionDashboard() {
         gender: "male",
         symptoms: "",
         priority: "normal",
-        doctor_id: "",
+        doctor_id: doctorOptions[0]?.value ?? "",
       });
       await loadAll({ background: true });
     } catch (error) {
@@ -263,6 +266,7 @@ export default function ReceptionDashboard() {
           </div>
         </div>
         <Table
+          className="table-queue"
           rowKey="id"
           columns={[
             { key: "id", title: "ID", dataIndex: "id" },
