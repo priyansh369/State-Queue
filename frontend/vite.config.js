@@ -6,5 +6,17 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  build: {
+    outDir: "dist",
+    sourcemap: false,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          vendor: ["axios", "react-router-dom"],
+        },
+      },
+    },
+  },
 });
 

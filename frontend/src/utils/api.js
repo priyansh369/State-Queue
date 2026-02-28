@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "https://state-queue.onrender.com",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "https://state-queue.onrender.com",
 });
 
 // Always attach JWT from localStorage if present
