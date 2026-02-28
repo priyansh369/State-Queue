@@ -5,11 +5,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import models
-from .database import engine
-from .db_migrate import ensure_schema
-from .websocket_manager import manager
-from .routers import auth, patient, doctor, reception
+import models
+from database import engine
+from db_migrate import ensure_schema
+from websocket_manager import manager
+from routers import auth, patient, doctor, reception
 
 models.Base.metadata.create_all(bind=engine)
 ensure_schema(engine)
