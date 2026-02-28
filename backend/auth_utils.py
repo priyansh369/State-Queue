@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from . import models, schemas
 from .database import get_db
 
-SECRET_KEY = "CHANGE_THIS_SECRET_KEY_IN_PRODUCTION"
+SECRET_KEY = "Secret"
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 8
