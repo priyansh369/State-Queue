@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import BackgroundTasks
 
-from .websocket_manager import manager
+from websocket_manager import manager
 
 
 def emit_queue_update(

@@ -15,6 +15,7 @@ export default function ReceptionDashboard() {
     name: "",
     age: "",
     gender: "male",
+    contact_number: "",
     symptoms: "",
     priority: "normal",
     doctor_id: "",
@@ -71,14 +72,23 @@ export default function ReceptionDashboard() {
         const response = await api.get("/reception/doctors");
         const registerOpts = response.data.map((doctor) => ({
           value: String(doctor.id),
-          label: doctor.name,
+          label: doctor.is_available ? doctor.name : `${doctor.name} (Unavailable)`,
+          disabled: !doctor.is_available,
         }));
+        const firstAvailableDoctor = registerOpts.find((opt) => !opt.disabled)?.value ?? "";
         setDoctorOptions(registerOpts);
         setForm((prev) => ({
           ...prev,
-          doctor_id: prev.doctor_id || (registerOpts[0]?.value ?? ""),
+          doctor_id:
+            (prev.doctor_id &&
+              registerOpts.some((opt) => opt.value === prev.doctor_id && !opt.disabled) &&
+              prev.doctor_id) ||
+            firstAvailableDoctor,
         }));
-        setFilterDoctorOptions([{ value: "", label: "All doctors" }, ...registerOpts]);
+        setFilterDoctorOptions([
+          { value: "", label: "All doctors" },
+          ...registerOpts.map((opt) => ({ value: opt.value, label: opt.label })),
+        ]);
       } catch (error) {
         toast.error(error?.response?.data?.error?.message || "Failed to load doctors");
       }
@@ -87,7 +97,8 @@ export default function ReceptionDashboard() {
     let socket = null;
     let closedByUser = false;
     const connect = () => {
-      socket = new WebSocket("ws://localhost:8000/ws");
+      const wsUrl = import.meta.env.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
+      socket = new WebSocket(wsUrl);
       socket.onmessage = (evt) => {
         try {
           const message = JSON.parse(evt.data);
@@ -141,6 +152,7 @@ export default function ReceptionDashboard() {
         name: "",
         age: "",
         gender: "male",
+        contact_number: "",
         symptoms: "",
         priority: "normal",
         doctor_id: doctorOptions[0]?.value ?? "",
@@ -168,6 +180,19 @@ export default function ReceptionDashboard() {
       await loadAll({ background: true });
     } catch (error) {
       toast.error(error?.response?.data?.error?.message || "Failed to cancel appointment");
+    }
+  };
+
+  const transferPatient = async (id, currentDoctorId, nextDoctorId) => {
+    const targetDoctorId = Number(nextDoctorId);
+    if (!Number.isFinite(targetDoctorId) || targetDoctorId <= 0) return;
+    if (Number(currentDoctorId) === targetDoctorId) return;
+    try {
+      await api.put(`/reception/transfer/${id}`, { doctor_id: targetDoctorId });
+      toast.success("Patient transferred");
+      await loadAll({ background: true });
+    } catch (error) {
+      toast.error(error?.response?.data?.error?.message || "Failed to transfer patient");
     }
   };
 
@@ -206,6 +231,12 @@ export default function ReceptionDashboard() {
               value={form.age}
               onChange={(value) => handleChange("age", value)}
               type="number"
+            />
+            <TextInput
+              label="Contact Number"
+              value={form.contact_number}
+              onChange={(value) => handleChange("contact_number", value)}
+              placeholder="+919876543210"
             />
             <Select
               label="Gender"
@@ -296,9 +327,21 @@ export default function ReceptionDashboard() {
               title: "Actions",
               dataIndex: "id",
               render: (_, row) => (
-                <button className="danger-btn" onClick={() => cancel(row.id)}>
-                  Cancel
-                </button>
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <select
+                    value={String(row.doctor_id)}
+                    onChange={(event) => transferPatient(row.id, row.doctor_id, event.target.value)}
+                  >
+                    {doctorOptions.map((opt) => (
+                      <option key={`transfer-${row.id}-${opt.value}`} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button className="danger-btn" onClick={() => cancel(row.id)}>
+                    Cancel
+                  </button>
+                </div>
               ),
             },
           ]}

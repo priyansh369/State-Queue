@@ -34,7 +34,7 @@ export function Select({ label, value, onChange, options, ...rest }) {
       <label>{label}</label>
       <select value={value} onChange={(e) => onChange(e.target.value)} {...rest}>
         {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
+          <option key={opt.value} value={opt.value} disabled={Boolean(opt.disabled)}>
             {opt.label}
           </option>
         ))}

@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || "https://state-queue.onrender.com",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000",
 });
 
 // Always attach JWT from localStorage if present
@@ -31,4 +31,3 @@ api.interceptors.response.use(
 );
 
 export default api;
-

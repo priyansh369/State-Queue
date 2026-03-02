@@ -159,6 +159,93 @@ body {
   font-size: 0.85rem;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.header-notifications {
+  position: relative;
+}
+
+.notification-btn {
+  position: relative;
+  border: 1px solid var(--border-200);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text-700);
+  font-size: 0.8rem;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: var(--danger-600);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 4px;
+}
+
+.notification-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 320px;
+  max-height: 360px;
+  background: #fff;
+  border: 1px solid var(--border-200);
+  border-radius: 10px;
+  box-shadow: var(--shadow-soft);
+  z-index: 60;
+}
+
+.notification-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.notification-list {
+  overflow-y: auto;
+  max-height: 300px;
+}
+
+.notification-item {
+  padding: 10px 12px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.notification-item-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-900);
+}
+
+.notification-item-message {
+  font-size: 0.78rem;
+  color: var(--text-700);
+  margin-top: 2px;
+}
+
+.notification-empty {
+  padding: 16px 12px;
+  font-size: 0.82rem;
+  color: var(--text-500);
+}
+
 .header-user-role {
   padding: 3px 10px;
   border-radius: 999px;
@@ -691,6 +778,11 @@ select {
 
   .header-user {
     display: none;
+  }
+
+  .notification-panel {
+    width: min(92vw, 320px);
+    right: -8px;
   }
 
   .app-content {

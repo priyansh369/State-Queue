@@ -2,17 +2,18 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
-from ..auth_utils import require_role
-from ..database import get_db
-from ..ml_engine import compute_patient_eta_minutes, compute_queue_estimates, estimate_next_service_minutes
-from ..realtime import emit_queue_update
-from ..services.hospital import (
+import models, schemas
+from auth_utils import require_role
+from database import get_db
+from ml_engine import compute_patient_eta_minutes, compute_queue_estimates, estimate_next_service_minutes
+from realtime import emit_queue_update
+from sms_notifications import notify_new_appointment_sms
+from services.hospital import (
     create_appointment_for_patient,
     create_patient_with_queue,
     map_queue_patient,
 )
-from ..ws_payloads import patient_payload
+from ws_payloads import patient_payload
 
 router = APIRouter(prefix="/patient", tags=["patient"])
 
@@ -24,12 +25,29 @@ def book_appointment(
     db: Session = Depends(get_db),
     current_user=Depends(require_role(models.UserRoleEnum.PATIENT)),
 ):
+    doctor = (
+        db.query(models.User)
+        .filter(
+            models.User.id == patient_in.doctor_id,
+            models.User.role == models.UserRoleEnum.DOCTOR,
+        )
+        .first()
+    )
+    if not doctor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
+    if not doctor.is_available:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected doctor is currently unavailable",
+        )
+
     try:
         patient = create_patient_with_queue(
             db,
             name=patient_in.name,
             age=patient_in.age,
             gender=patient_in.gender,
+            contact_number=patient_in.contact_number,
             symptoms=patient_in.symptoms,
             priority=patient_in.priority,
             doctor_id=patient_in.doctor_id,
@@ -48,6 +66,14 @@ def book_appointment(
         background_tasks,
         event_type="NEW_APPOINTMENT",
         data=patient_payload(patient),
+    )
+    eta = compute_patient_eta_minutes(db, patient)
+    background_tasks.add_task(
+        notify_new_appointment_sms,
+        patient.contact_number,
+        queue_number=patient.queue_number,
+        eta_minutes=eta,
+        doctor_name=doctor.name,
     )
 
     return patient

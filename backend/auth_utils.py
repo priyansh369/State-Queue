@@ -9,8 +9,8 @@ from jose import JWTError, jwt
 from passlib.hash import pbkdf2_sha256
 from sqlalchemy.orm import Session
 
-from . import models, schemas
-from .database import get_db
+import models, schemas
+from database import get_db
 
 SECRET_KEY = "Secret"
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)

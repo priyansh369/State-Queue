@@ -14,6 +14,7 @@ export default function PatientDashboard({ showBooking }) {
     name: "",
     age: "",
     gender: "male",
+    contact_number: "",
     symptoms: "",
     priority: "normal",
     doctor_id: "",
@@ -112,6 +113,7 @@ export default function PatientDashboard({ showBooking }) {
         name: "",
         age: "",
         gender: "male",
+        contact_number: "",
         symptoms: "",
         priority: "normal",
         doctor_id: doctors[0]?.value ?? "",
@@ -154,6 +156,12 @@ export default function PatientDashboard({ showBooking }) {
                 value={form.age}
                 onChange={(value) => handleChange("age", value)}
                 type="number"
+              />
+              <TextInput
+                label="Contact Number"
+                value={form.contact_number}
+                onChange={(value) => handleChange("contact_number", value)}
+                placeholder="+919876543210"
               />
               <Select
                 label="Gender"

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     Column,
     DateTime,
     ForeignKey,
@@ -38,6 +39,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     password = Column(String, nullable=False)
     role = Column(String, nullable=False)
+    is_available = Column(Boolean, nullable=False, default=True)
 
     doctor_patients = relationship("Patient", back_populates="doctor")
     doctor_appointments = relationship("Appointment", back_populates="doctor")
@@ -53,6 +55,7 @@ class Patient(Base):
     name = Column(String, nullable=False)
     age = Column(Integer, nullable=False)
     gender = Column(String, nullable=False)
+    contact_number = Column(String, nullable=True)
     symptoms = Column(String, nullable=False)
     priority = Column(String, nullable=False, default=PriorityEnum.NORMAL)
     status = Column(String, nullable=False, default=StatusEnum.WAITING)

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from . import models
+import models
 
 
 def patient_payload(patient: models.Patient) -> dict:
@@ -9,6 +9,7 @@ def patient_payload(patient: models.Patient) -> dict:
         "name": patient.name,
         "age": patient.age,
         "gender": patient.gender,
+        "contact_number": patient.contact_number,
         "symptoms": patient.symptoms,
         "priority": patient.priority,
         "priority_rank": 0 if patient.priority == models.PriorityEnum.EMERGENCY else 1,

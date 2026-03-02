@@ -30,6 +30,8 @@ def ensure_schema(engine: Engine) -> None:
             _add_column(engine, "patients", "started_serving_at", "DATETIME")
         if "completed_at" not in patient_cols:
             _add_column(engine, "patients", "completed_at", "DATETIME")
+        if "contact_number" not in patient_cols:
+            _add_column(engine, "patients", "contact_number", "TEXT")
     except Exception:
         # table might not exist yet; create_all will handle it
         pass
@@ -43,6 +45,14 @@ def ensure_schema(engine: Engine) -> None:
             _add_column(engine, "appointments", "started_at", "DATETIME")
         if "completed_at" not in appt_cols:
             _add_column(engine, "appointments", "completed_at", "DATETIME")
+    except Exception:
+        pass
+
+    # users: is_available
+    try:
+        user_cols = _existing_columns(engine, "users")
+        if "is_available" not in user_cols:
+            _add_column(engine, "users", "is_available", "BOOLEAN NOT NULL DEFAULT 1")
     except Exception:
         pass
 

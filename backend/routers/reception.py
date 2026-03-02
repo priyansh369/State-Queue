@@ -3,19 +3,20 @@ from sqlalchemy import case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
-from ..auth_utils import require_role
-from ..database import get_db
-from ..ml_engine import compute_patient_eta_minutes, compute_queue_estimates
-from ..realtime import emit_queue_update
-from ..services.hospital import (
+import models, schemas
+from auth_utils import require_role
+from database import get_db
+from ml_engine import compute_patient_eta_minutes, compute_queue_estimates
+from realtime import emit_queue_update
+from sms_notifications import notify_new_appointment_sms
+from services.hospital import (
     create_appointment_for_patient,
     create_patient_with_queue,
     dashboard_analytics,
     map_queue_patient,
     write_audit_log,
 )
-from ..ws_payloads import patient_payload
+from ws_payloads import patient_payload
 
 router = APIRouter(prefix="/reception", tags=["reception"])
 
@@ -27,12 +28,29 @@ def register_patient(
     db: Session = Depends(get_db),
     current_user=Depends(require_role(models.UserRoleEnum.RECEPTIONIST)),
 ):
+    doctor = (
+        db.query(models.User)
+        .filter(
+            models.User.id == patient_in.doctor_id,
+            models.User.role == models.UserRoleEnum.DOCTOR,
+        )
+        .first()
+    )
+    if not doctor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
+    if not doctor.is_available:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Selected doctor is currently unavailable",
+        )
+
     try:
         patient = create_patient_with_queue(
             db,
             name=patient_in.name,
             age=patient_in.age,
             gender=patient_in.gender,
+            contact_number=patient_in.contact_number,
             symptoms=patient_in.symptoms,
             priority=patient_in.priority,
             doctor_id=patient_in.doctor_id,
@@ -51,6 +69,14 @@ def register_patient(
         background_tasks,
         event_type="NEW_APPOINTMENT",
         data=patient_payload(patient),
+    )
+    eta = compute_patient_eta_minutes(db, patient)
+    background_tasks.add_task(
+        notify_new_appointment_sms,
+        patient.contact_number,
+        queue_number=patient.queue_number,
+        eta_minutes=eta,
+        doctor_name=doctor.name,
     )
     return patient
 
@@ -140,6 +166,95 @@ def update_priority(
     return patient
 
 
+@router.put("/transfer/{id}", response_model=schemas.PatientOut)
+def transfer_patient(
+    id: int,
+    body: schemas.TransferPatient,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role(models.UserRoleEnum.RECEPTIONIST)),
+):
+    patient = db.query(models.Patient).filter(models.Patient.id == id).first()
+    if not patient:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if patient.status != models.StatusEnum.WAITING:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only waiting patients can be transferred",
+        )
+    if patient.doctor_id == body.doctor_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Patient is already assigned to this doctor",
+        )
+
+    target_doctor = (
+        db.query(models.User)
+        .filter(
+            models.User.id == body.doctor_id,
+            models.User.role == models.UserRoleEnum.DOCTOR,
+        )
+        .first()
+    )
+    if not target_doctor:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Target doctor not found",
+        )
+    if not target_doctor.is_available:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Target doctor is currently unavailable",
+        )
+
+    try:
+        max_queue = (
+            db.query(models.Patient.queue_number)
+            .filter(models.Patient.doctor_id == body.doctor_id)
+            .order_by(models.Patient.queue_number.desc())
+            .limit(1)
+            .scalar()
+        )
+        patient.doctor_id = body.doctor_id
+        patient.queue_number = (max_queue or 0) + 1
+        db.add(patient)
+
+        appointment = (
+            db.query(models.Appointment)
+            .filter(
+                models.Appointment.patient_id == id,
+                models.Appointment.status == models.StatusEnum.WAITING,
+            )
+            .order_by(models.Appointment.appointment_date.desc())
+            .first()
+        )
+        if appointment:
+            appointment.doctor_id = body.doctor_id
+            db.add(appointment)
+
+        write_audit_log(
+            db,
+            user_id=current_user.id,
+            action=f"TRANSFER_PATIENT_TO_DOCTOR_{body.doctor_id}",
+            patient_id=patient.id,
+        )
+        db.commit()
+        db.refresh(patient)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Unable to transfer patient. Please retry.",
+        )
+
+    emit_queue_update(
+        background_tasks,
+        event_type="PATIENT_TRANSFERRED",
+        data=patient_payload(patient),
+    )
+    return patient
+
+
 @router.delete("/cancel/{id}")
 def cancel_patient(
     id: int,
@@ -182,13 +297,12 @@ def cancel_patient(
 def list_doctors(
     db: Session = Depends(get_db),
     current_user=Depends(require_role(models.UserRoleEnum.RECEPTIONIST)),
+    include_unavailable: bool = True,
 ):
-    doctors = (
-        db.query(models.User)
-        .filter(models.User.role == models.UserRoleEnum.DOCTOR)
-        .order_by(models.User.name.asc())
-        .all()
-    )
+    query = db.query(models.User).filter(models.User.role == models.UserRoleEnum.DOCTOR)
+    if not include_unavailable:
+        query = query.filter(models.User.is_available.is_(True))
+    doctors = query.order_by(models.User.name.asc()).all()
     return doctors
 
 

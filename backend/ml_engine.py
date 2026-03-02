@@ -6,7 +6,7 @@ from typing import Iterable
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
-from . import models
+import models
 
 
 MIN_SERVICE_MINUTES = 4.0

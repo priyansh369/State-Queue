@@ -6,8 +6,8 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
-from ..ml_engine import compute_patient_eta_minutes
+import models, schemas
+from ml_engine import compute_patient_eta_minutes
 
 
 def _utc_today_start() -> datetime:
@@ -42,6 +42,7 @@ def map_queue_patient(
     return schemas.QueuePatient(
         id=patient.id,
         name=patient.name,
+        doctor_id=patient.doctor_id,
         priority=patient.priority,
         priority_rank=0 if patient.priority == models.PriorityEnum.EMERGENCY else 1,
         status=patient.status,
@@ -60,6 +61,7 @@ def create_patient_with_queue(
     name: str,
     age: int,
     gender: str,
+    contact_number: str,
     symptoms: str,
     priority: str,
     doctor_id: int,
@@ -75,6 +77,7 @@ def create_patient_with_queue(
             name=name,
             age=age,
             gender=gender,
+            contact_number=contact_number,
             symptoms=symptoms,
             priority=priority,
             status=models.StatusEnum.WAITING,

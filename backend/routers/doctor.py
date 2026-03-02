@@ -4,15 +4,56 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from sqlalchemy import case
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
-from ..auth_utils import require_role
-from ..database import get_db
-from ..ml_engine import compute_queue_estimates
-from ..realtime import emit_queue_update
-from ..services.hospital import dashboard_analytics, map_queue_patient, write_audit_log
-from ..ws_payloads import patient_payload
+import models, schemas
+from auth_utils import require_role
+from database import get_db
+from ml_engine import compute_queue_estimates
+from realtime import emit_queue_update
+from sms_notifications import notify_now_serving_soon_sms, notify_status_updated_sms
+from services.hospital import dashboard_analytics, map_queue_patient, write_audit_log
+from ws_payloads import patient_payload
 
 router = APIRouter(prefix="/doctor", tags=["doctor"])
+
+
+@router.get("/availability", response_model=schemas.DoctorOut)
+def get_my_availability(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role(models.UserRoleEnum.DOCTOR)),
+):
+    doctor = db.query(models.User).filter(models.User.id == current_user.id).first()
+    if not doctor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
+    return doctor
+
+
+@router.put("/availability", response_model=schemas.DoctorOut)
+def update_my_availability(
+    body: schemas.UpdateDoctorAvailability,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_role(models.UserRoleEnum.DOCTOR)),
+):
+    doctor = db.query(models.User).filter(models.User.id == current_user.id).first()
+    if not doctor:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Doctor not found")
+
+    doctor.is_available = body.is_available
+    db.add(doctor)
+    write_audit_log(
+        db,
+        user_id=doctor.id,
+        action="DOCTOR_MARKED_AVAILABLE" if body.is_available else "DOCTOR_MARKED_UNAVAILABLE",
+    )
+    db.commit()
+    db.refresh(doctor)
+
+    emit_queue_update(
+        background_tasks,
+        event_type="DOCTOR_AVAILABILITY_CHANGED",
+        data={"doctor_id": doctor.id, "is_available": doctor.is_available},
+    )
+    return doctor
 
 
 @router.get("/queue", response_model=list[schemas.QueuePatient])
@@ -114,6 +155,22 @@ def complete_patient(
         event_type="STATUS_UPDATED",
         data=patient_payload(patient),
     )
+    background_tasks.add_task(
+        notify_status_updated_sms,
+        patient.contact_number,
+        status="COMPLETED",
+        doctor_name=current_user.name,
+    )
+    estimates = compute_queue_estimates(db, current_user.id)
+    soon_items = [
+        (e.patient.id, e.patient.contact_number, e.eta_minutes)
+        for e in estimates
+    ]
+    background_tasks.add_task(
+        notify_now_serving_soon_sms,
+        soon_items,
+        doctor_name=current_user.name,
+    )
     return patient
 
 
@@ -178,6 +235,22 @@ def start_serving_patient(
         background_tasks,
         event_type="STATUS_UPDATED",
         data=patient_payload(patient),
+    )
+    background_tasks.add_task(
+        notify_status_updated_sms,
+        patient.contact_number,
+        status="STARTED",
+        doctor_name=current_user.name,
+    )
+    estimates = compute_queue_estimates(db, current_user.id)
+    soon_items = [
+        (e.patient.id, e.patient.contact_number, e.eta_minutes)
+        for e in estimates
+    ]
+    background_tasks.add_task(
+        notify_now_serving_soon_sms,
+        soon_items,
+        doctor_name=current_user.name,
     )
     return patient
 

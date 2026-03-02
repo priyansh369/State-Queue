@@ -34,3 +34,18 @@ App: `http://localhost:5173`
 - Login redirects to the correct panel based on role.
 - Emergency patients are surfaced at the top of queues, with basic wait-time estimation.
 
+### Optional: Twilio SMS Notifications
+
+To enable SMS on `NEW_APPOINTMENT`, `STATUS_UPDATED`, and "now serving soon" reminders, set:
+
+```bash
+SMS_ENABLED=true
+TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+TWILIO_AUTH_TOKEN=your_auth_token
+TWILIO_FROM_NUMBER=+1XXXXXXXXXX
+SMS_SOON_THRESHOLD_MINUTES=10
+SMS_SOON_COOLDOWN_MINUTES=15
+```
+
+If these are not set, SMS functions are safely skipped.
+

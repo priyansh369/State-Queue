@@ -62,6 +62,11 @@ class PatientBase(BaseModel):
     )
     age: int = Field(ge=0, le=130)
     gender: Literal["male", "female", "other"]
+    contact_number: str = Field(
+        min_length=10,
+        max_length=16,
+        validation_alias=AliasChoices("contact_number", "contact_no", "phone", "phone_number"),
+    )
     symptoms: str = Field(min_length=2, max_length=800)
     priority: Literal["normal", "emergency"] = "normal"
     doctor_id: int = Field(gt=0)
@@ -72,6 +77,18 @@ class PatientBase(BaseModel):
         cleaned = " ".join(value.strip().split())
         if not cleaned:
             raise ValueError("Field cannot be empty")
+        return cleaned
+
+    @field_validator("contact_number")
+    @classmethod
+    def validate_contact_number(cls, value: str) -> str:
+        cleaned = value.strip().replace(" ", "").replace("-", "")
+        if cleaned.startswith("+"):
+            digits = cleaned[1:]
+        else:
+            digits = cleaned
+        if not digits.isdigit() or len(digits) < 10 or len(digits) > 15:
+            raise ValueError("Contact number must be 10 to 15 digits")
         return cleaned
 
 
@@ -106,6 +123,7 @@ class AppointmentOut(AppointmentBase):
 class QueuePatient(BaseModel):
     id: int
     name: str
+    doctor_id: int
     priority: str
     priority_rank: int
     status: str
@@ -134,6 +152,11 @@ class ReceptionRegisterPatient(BaseModel):
     name: str = Field(min_length=2, max_length=120)
     age: int = Field(ge=0, le=130)
     gender: Literal["male", "female", "other"]
+    contact_number: str = Field(
+        min_length=10,
+        max_length=16,
+        validation_alias=AliasChoices("contact_number", "contact_no", "phone", "phone_number"),
+    )
     symptoms: str = Field(min_length=2, max_length=800)
     priority: Literal["normal", "emergency"] = "normal"
     doctor_id: int = Field(gt=0)
@@ -146,15 +169,36 @@ class ReceptionRegisterPatient(BaseModel):
             raise ValueError("Field cannot be empty")
         return cleaned
 
+    @field_validator("contact_number")
+    @classmethod
+    def validate_contact_number(cls, value: str) -> str:
+        cleaned = value.strip().replace(" ", "").replace("-", "")
+        if cleaned.startswith("+"):
+            digits = cleaned[1:]
+        else:
+            digits = cleaned
+        if not digits.isdigit() or len(digits) < 10 or len(digits) > 15:
+            raise ValueError("Contact number must be 10 to 15 digits")
+        return cleaned
+
 
 class UpdatePriority(BaseModel):
     priority: Literal["normal", "emergency"]
 
 
+class TransferPatient(BaseModel):
+    doctor_id: int = Field(gt=0)
+
+
 class DoctorOut(BaseModel):
     id: int
     name: str
+    is_available: bool
     model_config = ConfigDict(from_attributes=True)
+
+
+class UpdateDoctorAvailability(BaseModel):
+    is_available: bool
 
 
 class LiveQueueStatus(BaseModel):

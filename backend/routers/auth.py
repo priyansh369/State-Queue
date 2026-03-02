@@ -2,14 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
-from . import models, schemas
-from ..auth_utils import (
+import models, schemas
+from auth_utils import (
     create_access_token,
     get_password_hash,
     is_bcrypt_hash,
     verify_password,
 )
-from ..database import get_db
+from database import get_db
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -70,7 +70,10 @@ def login(
 def list_doctors(db: Session = Depends(get_db)):
     doctors = (
         db.query(models.User)
-        .filter(models.User.role == models.UserRoleEnum.DOCTOR)
+        .filter(
+            models.User.role == models.UserRoleEnum.DOCTOR,
+            models.User.is_available.is_(True),
+        )
         .order_by(models.User.name.asc())
         .all()
     )

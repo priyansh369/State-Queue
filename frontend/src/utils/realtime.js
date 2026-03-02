@@ -15,7 +15,7 @@ export function subscribeQueueUpdates(onEvent) {
   const connect = () => {
     if (stopped) return;
 
-    const url = "ws://localhost:8000/ws";
+    const url = import.meta.env.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
     ws = new WebSocket(url);
 
     ws.onopen = () => {

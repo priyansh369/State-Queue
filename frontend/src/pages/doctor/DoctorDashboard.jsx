@@ -15,6 +15,8 @@ export default function DoctorDashboard() {
   const [selected, setSelected] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isAvailable, setIsAvailable] = useState(true);
+  const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
 
   const reconnectRef = useRef(null);
 
@@ -22,12 +24,14 @@ export default function DoctorDashboard() {
     if (background) setIsRefreshing(true);
     else setIsLoading(true);
     try {
-      const [statsRes, queueRes] = await Promise.all([
+      const [statsRes, queueRes, availabilityRes] = await Promise.all([
         api.get("/doctor/dashboard/stats"),
         api.get("/doctor/queue"),
+        api.get("/doctor/availability"),
       ]);
       setStats(statsRes.data);
       setQueue(queueRes.data);
+      setIsAvailable(Boolean(availabilityRes.data?.is_available));
     } catch (error) {
       toast.error(error?.response?.data?.error?.message || "Failed to load doctor dashboard");
     } finally {
@@ -45,7 +49,8 @@ export default function DoctorDashboard() {
     let closedByUser = false;
 
     const connect = () => {
-      socket = new WebSocket("ws://localhost:8000/ws");
+      const wsUrl = import.meta.env.VITE_WS_URL || "ws://127.0.0.1:8000/ws";
+      socket = new WebSocket(wsUrl);
       socket.onmessage = (evt) => {
         try {
           const message = JSON.parse(evt.data);
@@ -95,6 +100,20 @@ export default function DoctorDashboard() {
   };
 
   const nowServing = queue.length ? queue[0] : null;
+  const toggleAvailability = async () => {
+    try {
+      setIsUpdatingAvailability(true);
+      const response = await api.put("/doctor/availability", { is_available: !isAvailable });
+      setIsAvailable(Boolean(response.data?.is_available));
+      toast.success(
+        response.data?.is_available ? "You are marked available" : "You are marked unavailable"
+      );
+    } catch (error) {
+      toast.error(error?.response?.data?.error?.message || "Failed to update availability");
+    } finally {
+      setIsUpdatingAvailability(false);
+    }
+  };
   const chartData = useMemo(
     () =>
       stats
@@ -114,7 +133,19 @@ export default function DoctorDashboard() {
     <div className="panel">
       <div className="row-between">
         <h2>Doctor Dashboard</h2>
-        {isRefreshing ? <LoadingSpinner label="Refreshing..." /> : null}
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <span className={isAvailable ? "pill" : "pill pill-danger"}>
+            {isAvailable ? "Available" : "Unavailable"}
+          </span>
+          <button className="secondary-btn" onClick={toggleAvailability} disabled={isUpdatingAvailability}>
+            {isUpdatingAvailability
+              ? "Updating..."
+              : isAvailable
+              ? "Go Unavailable"
+              : "Go Available"}
+          </button>
+          {isRefreshing ? <LoadingSpinner label="Refreshing..." /> : null}
+        </div>
       </div>
 
       {stats?.overdue_emergencies > 0 ? (
