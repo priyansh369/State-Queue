@@ -17,6 +17,19 @@ export default function DoctorDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isAvailable, setIsAvailable] = useState(true);
   const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
+  const [clockMs, setClockMs] = useState(Date.now());
+  const [queueSyncedAtMs, setQueueSyncedAtMs] = useState(Date.now());
+
+  const formatWait = (seconds, minutesFallback = 0) => {
+    const base = Number.isFinite(Number(seconds))
+      ? Number(seconds)
+      : Number(minutesFallback || 0) * 60;
+    const elapsed = Math.max(0, Math.floor((clockMs - queueSyncedAtMs) / 1000));
+    const total = base + elapsed;
+    const mm = Math.floor(total / 60);
+    const ss = total % 60;
+    return `${mm}:${String(ss).padStart(2, "0")}`;
+  };
 
   const reconnectRef = useRef(null);
 
@@ -31,6 +44,7 @@ export default function DoctorDashboard() {
       ]);
       setStats(statsRes.data);
       setQueue(queueRes.data);
+      setQueueSyncedAtMs(Date.now());
       setIsAvailable(Boolean(availabilityRes.data?.is_available));
     } catch (error) {
       toast.error(error?.response?.data?.error?.message || "Failed to load doctor dashboard");
@@ -43,6 +57,11 @@ export default function DoctorDashboard() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setClockMs(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let socket = null;
@@ -236,7 +255,12 @@ export default function DoctorDashboard() {
             },
             { key: "queue_number", title: "Queue #", dataIndex: "queue_number" },
             { key: "wait", title: "Est. Wait", dataIndex: "estimated_wait_minutes" },
-            { key: "waiting_minutes", title: "Waiting (min)", dataIndex: "waiting_minutes" },
+            {
+              key: "waiting_seconds",
+              title: "Waiting",
+              dataIndex: "waiting_seconds",
+              render: (value, row) => formatWait(value, row.waiting_minutes),
+            },
             {
               key: "actions",
               title: "Actions",
@@ -268,7 +292,7 @@ export default function DoctorDashboard() {
               <strong>Queue #:</strong> {selected.queue_number}
             </p>
             <p>
-              <strong>Waiting:</strong> {selected.waiting_minutes} min
+              <strong>Waiting:</strong> {formatWait(selected.waiting_seconds, selected.waiting_minutes)}
             </p>
             <button className="primary-btn" onClick={() => startServing(selected.id)}>
               Start Serving

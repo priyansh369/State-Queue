@@ -25,8 +25,21 @@ export default function PatientDashboard({ showBooking }) {
   const [live, setLive] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [clockMs, setClockMs] = useState(Date.now());
+  const [statusSyncedAtMs, setStatusSyncedAtMs] = useState(Date.now());
 
   const handleChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
+
+  const formatWait = (seconds, minutesFallback = 0, mode = "up", active = true) => {
+    const base = Number.isFinite(Number(seconds))
+      ? Number(seconds)
+      : Number(minutesFallback || 0) * 60;
+    const elapsed = active ? Math.max(0, Math.floor((clockMs - statusSyncedAtMs) / 1000)) : 0;
+    const total = mode === "down" ? Math.max(0, base - elapsed) : base + elapsed;
+    const mm = Math.floor(total / 60);
+    const ss = total % 60;
+    return `${mm}:${String(ss).padStart(2, "0")}`;
+  };
 
   const loadAppointments = async (patientId) => {
     const response = await api.get(`/patient/appointments/${patientId}`);
@@ -37,6 +50,7 @@ export default function PatientDashboard({ showBooking }) {
     const response = await api.get(`/patient/live-status/${patientId}`);
     setLive(response.data);
     setCurrentStatus(response.data.patient);
+    setStatusSyncedAtMs(Date.now());
   };
 
   const loadCurrentPatientData = async ({ background = false } = {}) => {
@@ -45,7 +59,12 @@ export default function PatientDashboard({ showBooking }) {
     try {
       const storedPatientId = localStorage.getItem("smarthospital_patient_id");
       const patientId = Number(storedPatientId);
-      if (!Number.isFinite(patientId) || patientId <= 0) return;
+      if (!Number.isFinite(patientId) || patientId <= 0) {
+        setCurrentStatus(null);
+        setLive(null);
+        setAppointments([]);
+        return;
+      }
       await Promise.all([loadLiveStatus(patientId), loadAppointments(patientId)]);
     } catch (error) {
       toast.error(error?.response?.data?.error?.message || "Failed to refresh patient data");
@@ -54,6 +73,11 @@ export default function PatientDashboard({ showBooking }) {
       setIsRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    const interval = setInterval(() => setClockMs(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -125,6 +149,7 @@ export default function PatientDashboard({ showBooking }) {
   };
 
   if (isLoading) return <LoadingSpinner label="Loading patient dashboard..." />;
+  const isWaiting = currentStatus?.status === "waiting";
 
   return (
     <div className="panel">
@@ -137,8 +162,25 @@ export default function PatientDashboard({ showBooking }) {
           <StatCard label="Queue Number" value={currentStatus ? currentStatus.queue_number : "-"} />
           <StatCard label="Status" value={currentStatus ? currentStatus.status : "-"} />
           <StatCard
-            label="Estimated Wait (min)"
-            value={currentStatus ? currentStatus.estimated_wait_minutes : "-"}
+            label="Estimated Wait"
+            value={
+              currentStatus
+                ? formatWait(
+                    currentStatus.estimated_wait_minutes * 60,
+                    currentStatus.estimated_wait_minutes,
+                    "down",
+                    isWaiting
+                  )
+                : "0:00"
+            }
+          />
+          <StatCard
+            label="Waiting Time"
+            value={
+              currentStatus
+                ? formatWait(currentStatus.waiting_seconds, currentStatus.waiting_minutes, "up", isWaiting)
+                : "0:00"
+            }
           />
           <StatCard
             label="Now Serving"
@@ -206,7 +248,16 @@ export default function PatientDashboard({ showBooking }) {
           columns={[
             { key: "id", title: "ID", dataIndex: "id" },
             { key: "date", title: "Date", dataIndex: "appointment_date" },
-            { key: "status", title: "Status", dataIndex: "status" },
+            {
+              key: "status",
+              title: "Status",
+              dataIndex: "status",
+              render: (value) => (
+                <span className={`status-pill status-${String(value || "").toLowerCase()}`}>
+                  {value}
+                </span>
+              ),
+            },
           ]}
           data={appointments}
         />

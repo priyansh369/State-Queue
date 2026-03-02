@@ -25,8 +25,21 @@ export default function ReceptionDashboard() {
   const [filterDoctorId, setFilterDoctorId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [clockMs, setClockMs] = useState(Date.now());
+  const [queueSyncedAtMs, setQueueSyncedAtMs] = useState(Date.now());
   const filterDoctorIdRef = useRef("");
   const reconnectRef = useRef(null);
+
+  const formatWait = (seconds, minutesFallback = 0) => {
+    const base = Number.isFinite(Number(seconds))
+      ? Number(seconds)
+      : Number(minutesFallback || 0) * 60;
+    const elapsed = Math.max(0, Math.floor((clockMs - queueSyncedAtMs) / 1000));
+    const total = base + elapsed;
+    const mm = Math.floor(total / 60);
+    const ss = total % 60;
+    return `${mm}:${String(ss).padStart(2, "0")}`;
+  };
 
   const handleChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
 
@@ -41,6 +54,7 @@ export default function ReceptionDashboard() {
       currentFilter ? `/reception/queue?doctor_id=${Number(currentFilter)}` : "/reception/queue"
     );
     setQueue(response.data);
+    setQueueSyncedAtMs(Date.now());
   };
 
   const loadAuditLogs = async () => {
@@ -64,6 +78,11 @@ export default function ReceptionDashboard() {
   useEffect(() => {
     filterDoctorIdRef.current = filterDoctorId;
   }, [filterDoctorId]);
+
+  useEffect(() => {
+    const interval = setInterval(() => setClockMs(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     loadAll();
@@ -314,11 +333,15 @@ export default function ReceptionDashboard() {
               ),
             },
             {
-              key: "waiting_minutes",
-              title: "Waiting (min)",
-              dataIndex: "waiting_minutes",
+              key: "waiting_seconds",
+              title: "Waiting",
+              dataIndex: "waiting_seconds",
               render: (value, row) =>
-                row.escalation_required ? <span className="blink-text">{value}</span> : value,
+                row.escalation_required ? (
+                  <span className="blink-text">{formatWait(value, row.waiting_minutes)}</span>
+                ) : (
+                  formatWait(value, row.waiting_minutes)
+                ),
             },
             { key: "queue", title: "Queue #", dataIndex: "queue_number" },
             { key: "wait", title: "Est. Wait", dataIndex: "estimated_wait_minutes" },

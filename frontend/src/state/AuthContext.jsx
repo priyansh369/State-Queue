@@ -54,6 +54,10 @@ export function AuthProvider({ children }) {
     if (restored) {
       setUser(restored.user);
       setToken(restored.token);
+      if (restored.role === "patient") {
+        // Reset patient queue session on app re-entry so dashboard starts clean.
+        localStorage.removeItem("smarthospital_patient_id");
+      }
       localStorage.setItem(
         STORAGE_KEY,
         JSON.stringify({
@@ -90,6 +94,10 @@ export function AuthProvider({ children }) {
     const u = { id: user_id, role: restoredRole, name, email };
     setUser(u);
     setToken(access_token);
+    if (restoredRole === "patient") {
+      // Start with no active queue context on each fresh login.
+      localStorage.removeItem("smarthospital_patient_id");
+    }
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ token: access_token, role: restoredRole, user: u })

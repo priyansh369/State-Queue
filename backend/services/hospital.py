@@ -16,15 +16,19 @@ def _utc_today_start() -> datetime:
 
 
 def waiting_minutes(patient: models.Patient) -> int:
+    return waiting_seconds(patient) // 60
+
+
+def waiting_seconds(patient: models.Patient) -> int:
     delta = datetime.utcnow() - patient.created_at
-    return max(int(delta.total_seconds() // 60), 0)
+    return max(int(delta.total_seconds()), 0)
 
 
 def escalation_required(patient: models.Patient) -> bool:
     return (
         patient.status == models.StatusEnum.WAITING
         and patient.priority == models.PriorityEnum.EMERGENCY
-        and waiting_minutes(patient) > 10
+        and waiting_seconds(patient) > 10 * 60
     )
 
 
@@ -51,6 +55,7 @@ def map_queue_patient(
         estimated_wait_minutes=estimated,
         estimated_time=f"{estimated} min",
         waiting_minutes=waiting_minutes(patient),
+        waiting_seconds=waiting_seconds(patient),
         escalation_required=escalation_required(patient),
     )
 

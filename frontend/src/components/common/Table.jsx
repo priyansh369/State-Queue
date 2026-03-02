@@ -13,6 +13,7 @@ export default function Table({ columns, data, rowKey, className = "" }) {
           <tr
             key={row[rowKey] || row.id}
             data-priority={row.priority}
+            data-status={row.status}
             data-escalation={row.escalation_required ? "true" : "false"}
           >
             {columns.map((col) => (

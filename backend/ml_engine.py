@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Iterable
 
 from sqlalchemy import case
@@ -115,6 +116,24 @@ def estimate_next_service_minutes(db: Session, doctor_id: int) -> float:
     return pred
 
 
+def _utc_today_start() -> datetime:
+    now = datetime.now(timezone.utc)
+    return datetime(now.year, now.month, now.day, tzinfo=timezone.utc).replace(tzinfo=None)
+
+
+def _doctor_completed_today_count(db: Session, doctor_id: int) -> int:
+    return (
+        db.query(models.Appointment)
+        .filter(
+            models.Appointment.doctor_id == doctor_id,
+            models.Appointment.status == models.StatusEnum.COMPLETED,
+            models.Appointment.completed_at.isnot(None),
+            models.Appointment.completed_at >= _utc_today_start(),
+        )
+        .count()
+    )
+
+
 def doctor_queue(db: Session, doctor_id: int) -> list[models.Patient]:
     priority_rank = case(
         (models.Patient.priority == models.PriorityEnum.EMERGENCY, 0),
@@ -141,14 +160,21 @@ def compute_queue_estimates(db: Session, doctor_id: int) -> list[QueueEstimate]:
     if not q:
         return []
 
+    base_service = estimate_next_service_minutes(db, doctor_id)
+    completed_today = _doctor_completed_today_count(db, doctor_id)
+    # As doctor completes more cases today, assume slight throughput improvement.
+    speed_factor = _clamp(1.0 - min(completed_today, 20) * 0.02, 0.65, 1.0)
+    service_minutes = _clamp(base_service * speed_factor, MIN_SERVICE_MINUTES, MAX_SERVICE_MINUTES)
+
     estimates: list[QueueEstimate] = []
-    for idx, p in enumerate(q):
-        # Queue ETA baseline: each position adds 10 minutes.
-        # Emergency gets reduced ETA while still remaining non-negative.
-        eta = idx * 10
-        if p.priority == models.PriorityEnum.EMERGENCY and eta > 0:
-            eta = max(0, eta - 5)
-        estimates.append(QueueEstimate(patient=p, eta_minutes=int(eta)))
+    cumulative = 0.0
+    for p in q:
+        eta = int(round(cumulative))
+        estimates.append(QueueEstimate(patient=p, eta_minutes=max(0, eta)))
+
+        # Emergency gets faster lane impact by reducing slot contribution.
+        slot = service_minutes * (0.7 if p.priority == models.PriorityEnum.EMERGENCY else 1.0)
+        cumulative += max(2.0, slot)
     return estimates
 
 

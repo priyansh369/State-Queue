@@ -132,6 +132,7 @@ class QueuePatient(BaseModel):
     estimated_wait_minutes: int
     estimated_time: str
     waiting_minutes: int = 0
+    waiting_seconds: int = 0
     escalation_required: bool = False
     model_config = ConfigDict(from_attributes=True)
 
