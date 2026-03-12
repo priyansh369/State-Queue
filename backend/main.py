@@ -21,7 +21,7 @@ origins = [origin.strip() for origin in cors_origins.split(",") if origin.strip(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins if origins else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -87,4 +87,3 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         await manager.disconnect(websocket)
-
