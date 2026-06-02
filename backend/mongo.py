@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 
+import certifi
 from dotenv import load_dotenv
 from pymongo import ASCENDING, DESCENDING, MongoClient, ReturnDocument
 from pymongo.collection import Collection
@@ -15,7 +16,11 @@ load_dotenv()
 MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017")
 MONGODB_DB = os.getenv("MONGODB_DB", "statq")
 
-_client = MongoClient(MONGODB_URI, server_api=ServerApi("1"))
+_client = MongoClient(
+    MONGODB_URI,
+    server_api=ServerApi("1"),
+    tlsCAFile=certifi.where(),
+)
 db: Database = _client[MONGODB_DB]
 
 

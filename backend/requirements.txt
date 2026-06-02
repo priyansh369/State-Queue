@@ -9,6 +9,7 @@ typing_extensions==4.15.0
 # Database
 pymongo==4.15.4
 dnspython==2.8.0
+certifi==2026.2.25
 
 # Authentication & Security
 python-jose==3.5.0
