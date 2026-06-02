@@ -493,6 +493,12 @@ body {
   border-color: #86efac;
 }
 
+.status-in_progress {
+  background: #dbeafe;
+  color: #1e40af;
+  border-color: #93c5fd;
+}
+
 .status-cancelled {
   background: #fee2e2;
   color: #991b1b;
@@ -762,6 +768,194 @@ select {
   color: #dbeafe;
 }
 
+.token-actions {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-end;
+}
+
+.waiting-screen-wrap .form-group {
+  margin-bottom: 0;
+}
+
+.waiting-screen-board {
+  margin-top: var(--space-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-200);
+  background: linear-gradient(145deg, #eaf2ff 0%, #f8fbff 100%);
+  padding: var(--space-6);
+}
+
+.waiting-screen-header h1 {
+  margin: 0;
+  font-size: 1.7rem;
+  color: var(--primary-900);
+}
+
+.waiting-screen-header p {
+  margin: 4px 0 0;
+  color: var(--text-500);
+}
+
+.waiting-screen-metrics {
+  margin-top: var(--space-5);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(200px, 1fr));
+  gap: var(--space-4);
+}
+
+.waiting-metric {
+  background: #fff;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  padding: var(--space-5);
+}
+
+.waiting-metric-label {
+  display: block;
+  color: var(--text-500);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 10px;
+}
+
+.waiting-metric-value {
+  font-size: clamp(1.5rem, 3vw, 2.7rem);
+  line-height: 1;
+  font-weight: 800;
+  color: var(--primary-900);
+}
+
+.waiting-upcoming {
+  margin-top: var(--space-5);
+}
+
+.waiting-upcoming h3 {
+  margin: 0 0 var(--space-3);
+}
+
+.waiting-upcoming-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--space-3);
+}
+
+.waiting-upcoming-item {
+  background: #fff;
+  border: 1px solid var(--border-200);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.waiting-upcoming-token {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--primary-900);
+}
+
+.waiting-upcoming-name {
+  color: var(--text-700);
+  font-weight: 600;
+}
+
+.waiting-empty {
+  color: var(--text-500);
+  padding: 6px 2px;
+}
+
+.waiting-tv-page {
+  min-height: 100vh;
+  background: radial-gradient(circle at 20% 20%, #dbeafe 0%, #f8fbff 45%, #eff6ff 100%);
+  padding: 28px;
+  color: #0f172a;
+}
+
+.waiting-tv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.waiting-tv-header h1 {
+  margin: 0;
+  font-size: clamp(1.8rem, 3vw, 2.8rem);
+  font-weight: 800;
+  color: #1e3a8a;
+}
+
+.waiting-tv-header p {
+  margin: 6px 0 0;
+  color: #475569;
+  font-weight: 600;
+}
+
+.waiting-tv-time {
+  font-size: clamp(1.2rem, 2vw, 1.8rem);
+  font-weight: 700;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 10px 14px;
+}
+
+.waiting-tv-main {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.waiting-tv-card {
+  background: #ffffff;
+  border: 1px solid #bfdbfe;
+  border-radius: 16px;
+  padding: 22px;
+}
+
+.waiting-tv-card span {
+  display: block;
+  color: #475569;
+  font-size: 0.95rem;
+  margin-bottom: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.waiting-tv-card strong {
+  font-size: clamp(2rem, 4vw, 3.6rem);
+  color: #1e3a8a;
+}
+
+.waiting-tv-upcoming {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.waiting-tv-item {
+  background: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.waiting-tv-empty,
+.waiting-tv-loading {
+  font-size: 1.2rem;
+  color: #475569;
+  font-weight: 600;
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -836,6 +1030,19 @@ select {
   .token-now {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .token-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .waiting-screen-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .waiting-tv-main {
+    grid-template-columns: 1fr;
   }
 
   .token-number {

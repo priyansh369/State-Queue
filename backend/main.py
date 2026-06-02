@@ -5,14 +5,12 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-import models
-from database import engine
 from db_migrate import ensure_schema
+from mongo import ping_database
 from websocket_manager import manager
-from routers import auth, patient, doctor, reception
+from routers import auth, patient, doctor, reception, tokens
 
-models.Base.metadata.create_all(bind=engine)
-ensure_schema(engine)
+ensure_schema()
 
 app = FastAPI(title="Smart Hospital Management System")
 
@@ -31,6 +29,7 @@ app.include_router(auth.router)
 app.include_router(patient.router)
 app.include_router(doctor.router)
 app.include_router(reception.router)
+app.include_router(tokens.router)
 
 
 @app.exception_handler(HTTPException)
@@ -76,6 +75,11 @@ async def unhandled_exception_handler(_: Request, __: Exception):
 @app.get("/")
 def read_root():
     return {"message": "Smart Hospital Management API"}
+
+
+@app.get("/health/db")
+def database_health():
+    return ping_database()
 
 
 @app.websocket("/ws")

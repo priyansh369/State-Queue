@@ -7,7 +7,6 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.hash import pbkdf2_sha256
-from sqlalchemy.orm import Session
 
 import models, schemas
 from database import get_db
@@ -54,8 +53,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 
 async def get_current_user(
-    token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
-) -> models.User:
+    token: str = Depends(oauth2_scheme), db=Depends(get_db)
+) -> dict:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -78,7 +77,7 @@ async def get_current_user(
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    user = db.query(models.User).filter(models.User.id == user_id).first()
+    user = db.users.find_one({"id": user_id})
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -89,8 +88,9 @@ async def get_current_user(
 
 
 def require_role(*roles: str):
-    async def role_dependency(current_user: models.User = Depends(get_current_user)) -> models.User:
-        if current_user.role not in roles:
+    async def role_dependency(current_user: dict = Depends(get_current_user)) -> dict:
+        role = current_user.get("role")
+        if role not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",

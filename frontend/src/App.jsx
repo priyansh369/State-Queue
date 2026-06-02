@@ -4,6 +4,7 @@ import RegisterPage from "./pages/auth/RegisterPage";
 import PatientLayout from "./pages/patient/PatientLayout";
 import DoctorLayout from "./pages/doctor/DoctorLayout";
 import ReceptionLayout from "./pages/reception/ReceptionLayout";
+import WaitingRoomScreen from "./pages/public/WaitingRoomScreen";
 import LoadingSpinner from "./components/common/LoadingSpinner";
 import { useAuth } from "./state/AuthContext";
 import { decodeJwt } from "./utils/jwt";
@@ -64,6 +65,8 @@ export default function App() {
       <Route path="/" element={<RoleHomeRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/waiting-screen/:doctorId" element={<WaitingRoomScreen />} />
+      <Route path="/waiting-screen" element={<WaitingRoomScreen />} />
 
       <Route
         path="/patient/*"

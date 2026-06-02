@@ -2,12 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-
 import models, schemas
-from ml_engine import compute_patient_eta_minutes
+from mongo import next_id, utcnow
 
 
 def _utc_today_start() -> datetime:
@@ -15,43 +11,41 @@ def _utc_today_start() -> datetime:
     return datetime(now.year, now.month, now.day, tzinfo=timezone.utc).replace(tzinfo=None)
 
 
-def waiting_minutes(patient: models.Patient) -> int:
+def waiting_minutes(patient: dict) -> int:
     return waiting_seconds(patient) // 60
 
 
-def waiting_seconds(patient: models.Patient) -> int:
-    delta = datetime.utcnow() - patient.created_at
+def waiting_seconds(patient: dict) -> int:
+    created_at = patient.get("created_at") or utcnow()
+    delta = utcnow() - created_at
     return max(int(delta.total_seconds()), 0)
 
 
-def escalation_required(patient: models.Patient) -> bool:
+def escalation_required(patient: dict) -> bool:
     return (
-        patient.status == models.StatusEnum.WAITING
-        and patient.priority == models.PriorityEnum.EMERGENCY
+        patient.get("status") == models.StatusEnum.WAITING
+        and patient.get("priority") == models.PriorityEnum.EMERGENCY
         and waiting_seconds(patient) > 10 * 60
     )
 
 
 def map_queue_patient(
-    db: Session,
-    patient: models.Patient,
+    _db,
+    patient: dict,
     queue_number: int,
     estimated_wait_minutes: int | None = None,
 ) -> schemas.QueuePatient:
-    estimated = (
-        estimated_wait_minutes
-        if estimated_wait_minutes is not None
-        else compute_patient_eta_minutes(db, patient)
-    )
+    estimated = int(max(estimated_wait_minutes or 0, 0))
+    priority = patient.get("priority", models.PriorityEnum.NORMAL)
     return schemas.QueuePatient(
-        id=patient.id,
-        name=patient.name,
-        doctor_id=patient.doctor_id,
-        priority=patient.priority,
-        priority_rank=0 if patient.priority == models.PriorityEnum.EMERGENCY else 1,
-        status=patient.status,
+        id=patient["id"],
+        name=patient["name"],
+        doctor_id=patient["doctor_id"],
+        priority=priority,
+        priority_rank=0 if priority == models.PriorityEnum.EMERGENCY else 1,
+        status=patient.get("status", models.StatusEnum.WAITING),
         queue_number=queue_number,
-        symptoms=patient.symptoms,
+        symptoms=patient.get("symptoms", ""),
         estimated_wait_minutes=estimated,
         estimated_time=f"{estimated} min",
         waiting_minutes=waiting_minutes(patient),
@@ -61,7 +55,7 @@ def map_queue_patient(
 
 
 def create_patient_with_queue(
-    db: Session,
+    db,
     *,
     name: str,
     age: int,
@@ -70,97 +64,104 @@ def create_patient_with_queue(
     symptoms: str,
     priority: str,
     doctor_id: int,
-) -> models.Patient:
-    for _ in range(3):
-        max_queue = (
-            db.query(func.max(models.Patient.queue_number))
-            .filter(models.Patient.doctor_id == doctor_id)
-            .scalar()
-        )
-        next_queue = (max_queue or 0) + 1
-        patient = models.Patient(
-            name=name,
-            age=age,
-            gender=gender,
-            contact_number=contact_number,
-            symptoms=symptoms,
-            priority=priority,
-            status=models.StatusEnum.WAITING,
-            queue_number=next_queue,
-            doctor_id=doctor_id,
-        )
-        db.add(patient)
-        try:
-            db.flush()
-            return patient
-        except IntegrityError:
-            db.rollback()
-
-    raise IntegrityError("Failed to allocate unique queue number", {}, None)
+    user_id: int | None = None,
+) -> dict:
+    next_queue = (
+        db.patients.find_one({"doctor_id": doctor_id}, {"queue_number": 1}, sort=[("queue_number", -1)])
+        or {}
+    ).get("queue_number", 0) + 1
+    patient = {
+        "id": next_id("patients"),
+        "name": name,
+        "age": age,
+        "gender": gender,
+        "contact_number": contact_number,
+        "symptoms": symptoms,
+        "priority": priority,
+        "status": models.StatusEnum.WAITING,
+        "queue_number": next_queue,
+        "doctor_id": doctor_id,
+        "user_id": user_id,
+        "created_at": utcnow(),
+        "started_serving_at": None,
+        "completed_at": None,
+    }
+    db.patients.insert_one(patient)
+    return patient
 
 
-def create_appointment_for_patient(db: Session, *, patient_id: int, doctor_id: int) -> None:
-    db.add(
-        models.Appointment(
-            patient_id=patient_id,
-            doctor_id=doctor_id,
-            appointment_date=datetime.utcnow(),
-            status=models.StatusEnum.WAITING,
-        )
+def create_appointment_for_patient(db, *, patient_id: int, doctor_id: int) -> dict:
+    appointment = {
+        "id": next_id("appointments"),
+        "patient_id": patient_id,
+        "doctor_id": doctor_id,
+        "appointment_date": utcnow(),
+        "status": models.StatusEnum.WAITING,
+        "created_at": utcnow(),
+        "started_at": None,
+        "completed_at": None,
+    }
+    db.appointments.insert_one(appointment)
+    return appointment
+
+
+def write_audit_log(db, *, user_id: int, action: str, patient_id: int | None = None) -> None:
+    db.audit_logs.insert_one(
+        {
+            "id": next_id("audit_logs"),
+            "user_id": user_id,
+            "action": action,
+            "patient_id": patient_id,
+            "timestamp": utcnow(),
+        }
     )
 
 
-def write_audit_log(db: Session, *, user_id: int, action: str, patient_id: int | None = None) -> None:
-    db.add(models.AuditLog(user_id=user_id, action=action, patient_id=patient_id))
-
-
-def dashboard_analytics(db: Session, *, doctor_id: int | None = None) -> dict[str, float | int]:
-    filters = []
-    if doctor_id is not None:
-        filters.append(models.Patient.doctor_id == doctor_id)
-
+def dashboard_analytics(db, *, doctor_id: int | None = None) -> dict[str, float | int]:
     today_start = _utc_today_start()
-    today_filters = filters + [models.Patient.created_at >= today_start]
+    base_filter = {}
+    if doctor_id is not None:
+        base_filter["doctor_id"] = doctor_id
 
-    total_today = db.query(models.Patient).filter(*today_filters).count()
-    emergency_today = (
-        db.query(models.Patient)
-        .filter(*today_filters, models.Patient.priority == models.PriorityEnum.EMERGENCY)
-        .count()
-    )
-    completed_today = (
-        db.query(models.Patient)
-        .filter(*today_filters, models.Patient.status == models.StatusEnum.COMPLETED)
-        .count()
-    )
-    overdue_emergencies = (
-        db.query(models.Patient)
-        .filter(
-            *filters,
-            models.Patient.status == models.StatusEnum.WAITING,
-            models.Patient.priority == models.PriorityEnum.EMERGENCY,
-            models.Patient.created_at <= datetime.utcnow().replace(second=0, microsecond=0),
-        )
-        .all()
-    )
-    overdue_count = sum(1 for p in overdue_emergencies if escalation_required(p))
+    today_filter = dict(base_filter)
+    today_filter["created_at"] = {"$gte": today_start}
 
-    avg_wait_query = (
-        db.query(
-            func.avg(
-                (func.julianday(models.Patient.completed_at) - func.julianday(models.Patient.created_at))
-                * 24
-                * 60
-            )
-        )
-        .filter(
-            *today_filters,
-            models.Patient.status == models.StatusEnum.COMPLETED,
-            models.Patient.completed_at.isnot(None),
-        )
-        .scalar()
+    total_today = db.patients.count_documents(today_filter)
+    emergency_today = db.patients.count_documents(
+        {**today_filter, "priority": models.PriorityEnum.EMERGENCY}
     )
-    avg_wait = int(round(avg_wait_query or 0))
+    completed_today = db.patients.count_documents(
+        {**today_filter, "status": models.StatusEnum.COMPLETED}
+    )
+
+    overdue = list(
+        db.patients.find(
+            {
+                **base_filter,
+                "status": models.StatusEnum.WAITING,
+                "priority": models.PriorityEnum.EMERGENCY,
+            }
+        )
+    )
+    overdue_count = sum(1 for p in overdue if escalation_required(p))
+
+    completed_rows = list(
+        db.patients.find(
+            {
+                **today_filter,
+                "status": models.StatusEnum.COMPLETED,
+                "completed_at": {"$ne": None},
+            },
+            {"created_at": 1, "completed_at": 1},
+        )
+    )
+    durations = []
+    for row in completed_rows:
+        created = row.get("created_at")
+        completed = row.get("completed_at")
+        if created and completed and completed >= created:
+            durations.append((completed - created).total_seconds() / 60)
+    avg_wait = int(round(sum(durations) / len(durations))) if durations else 0
 
     emergency_percentage = round((emergency_today / total_today) * 100, 2) if total_today else 0.0
     completion_rate = round((completed_today / total_today) * 100, 2) if total_today else 0.0

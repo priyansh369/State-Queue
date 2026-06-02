@@ -19,7 +19,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str = Field(min_length=8, max_length=72)
-    role: Literal["patient", "doctor", "receptionist"]
+    role: Literal["patient", "doctor", "receptionist", "admin"]
 
     @field_validator("password")
     @classmethod
@@ -217,3 +217,31 @@ class AuditLogOut(BaseModel):
     patient_id: Optional[int]
     timestamp: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+class CreateTokenRequest(BaseModel):
+    patient_id: int = Field(gt=0)
+    doctor_id: int = Field(gt=0)
+
+
+class OpdTokenOut(BaseModel):
+    id: int
+    token_number: int
+    patient_id: int
+    doctor_id: int
+    status: Literal["waiting", "in_progress", "completed"]
+    created_at: datetime
+    called_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    patient_name: Optional[str] = None
+    doctor_name: Optional[str] = None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WaitingScreenSummary(BaseModel):
+    doctor_id: int
+    doctor_name: str
+    now_serving: Optional[OpdTokenOut]
+    next_token: Optional[OpdTokenOut]
+    upcoming_tokens: list[OpdTokenOut]
+    refreshed_at: datetime

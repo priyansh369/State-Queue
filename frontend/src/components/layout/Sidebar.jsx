@@ -7,6 +7,8 @@ function SidebarIcon({ name }) {
     dashboard: "M4 4h7v7H4zM13 4h7v4h-7zM13 10h7v11h-7zM4 13h7v8H4z",
     book: "M6 4h12a2 2 0 0 1 2 2v14l-4-2-4 2-4-2-4 2V6a2 2 0 0 1 2-2z",
     doctor: "M12 3v18M3 12h18",
+    token: "M5 7h14M5 12h14M5 17h10",
+    screen: "M3 5h18v12H3zM8 19h8",
     logout: "M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 16l5-4-5-4M19 12H9",
   };
   const d = iconMap[name] || iconMap.dashboard;
@@ -29,6 +31,8 @@ export default function Sidebar({ links, open, onClose }) {
 
   const getIcon = (link) => {
     const label = String(link.label || "").toLowerCase();
+    if (label.includes("token")) return "token";
+    if (label.includes("waiting")) return "screen";
     if (label.includes("queue")) return "queue";
     if (label.includes("book")) return "book";
     if (label.includes("doctor")) return "doctor";
