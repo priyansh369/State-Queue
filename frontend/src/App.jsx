@@ -1,6 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
+import EmailVerificationPage from "./pages/auth/EmailVerificationPage";
+import ForgotPasswordPage from "./pages/auth/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/auth/ResetPasswordPage";
 import PatientLayout from "./pages/patient/PatientLayout";
 import DoctorLayout from "./pages/doctor/DoctorLayout";
 import ReceptionLayout from "./pages/reception/ReceptionLayout";
@@ -65,6 +68,10 @@ export default function App() {
       <Route path="/" element={<RoleHomeRedirect />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/verify-email" element={<EmailVerificationPage />} />
+      <Route path="/verify-email/:token" element={<EmailVerificationPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password/:token" element={<ResetPasswordPage />} />
       <Route path="/waiting-screen/:doctorId" element={<WaitingRoomScreen />} />
       <Route path="/waiting-screen" element={<WaitingRoomScreen />} />
 

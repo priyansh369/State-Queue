@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 import os
 from typing import Optional
+import secrets
+import hashlib
 
 import bcrypt
 from fastapi import Depends, HTTPException, status
@@ -15,6 +17,8 @@ SECRET_KEY = "Secret"
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", SECRET_KEY)
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 8
+EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES = int(os.getenv("EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES", "1440"))
+PASSWORD_RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "30"))
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 
@@ -99,3 +103,20 @@ def require_role(*roles: str):
 
     return role_dependency
 
+
+def create_email_token(token_type: str) -> tuple[str, str]:
+    """
+    Create a secure token for email verification or password reset.
+    Returns (raw_token, hashed_token).
+    """
+    raw_token = secrets.token_urlsafe(32)
+    hashed_token = hashlib.sha256(raw_token.encode()).hexdigest()
+    return raw_token, hashed_token
+
+
+def verify_email_token(provided_token: str, stored_hash: str) -> bool:
+    """Verify an email token by comparing hashes."""
+    if not provided_token or not stored_hash:
+        return False
+    provided_hash = hashlib.sha256(provided_token.encode()).hexdigest()
+    return provided_hash == stored_hash

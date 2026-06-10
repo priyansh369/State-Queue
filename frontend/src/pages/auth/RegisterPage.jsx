@@ -9,6 +9,7 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState("patient");
   const [loading, setLoading] = useState(false);
 
@@ -17,7 +18,7 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       await register({ name, email, password, role });
-      navigate("/login");
+      navigate(`/verify-email?email=${encodeURIComponent(email)}`);
     } catch (error) {
       toast.error(error?.response?.data?.error?.message || "Registration failed");
     } finally {
@@ -67,15 +68,25 @@ export default function RegisterPage() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700">Password</label>
-              <input
-                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
-                type="password"
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
-                placeholder="Min 8 chars with upper/lower/number/symbol"
-                autoComplete="new-password"
-                required
-              />
+              <div className="relative mt-1">
+                <input
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-2.5 pr-12 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/60"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="Min 8 chars with upper/lower/number/symbol"
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 transition"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? "👁️‍🗨️" : "👁️"}
+                </button>
+              </div>
             </div>
 
             <div>

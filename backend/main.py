@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from db_migrate import ensure_schema
 from mongo import ping_database
 from websocket_manager import manager
-from routers import auth, patient, doctor, reception, tokens
+from routers import auth, patient, doctor, reception, tokens, email_verification
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ app.include_router(patient.router)
 app.include_router(doctor.router)
 app.include_router(reception.router)
 app.include_router(tokens.router)
+app.include_router(email_verification.router)
 
 
 @app.on_event("startup")

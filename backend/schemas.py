@@ -52,6 +52,37 @@ class Token(BaseModel):
     user_id: int
     role: str
     name: str
+    email_verified: bool = False
+
+
+class RegistrationResponse(BaseModel):
+    id: int
+    name: str
+    email: str
+    role: str
+    email_verified: bool
+    message: str = "Registration successful. Check your email to verify your account."
+
+
+class EmailRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequest(BaseModel):
+    new_password: str = Field(min_length=8, max_length=72)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password_strength(cls, value: str) -> str:
+        has_upper = any(ch.isupper() for ch in value)
+        has_lower = any(ch.islower() for ch in value)
+        has_digit = any(ch.isdigit() for ch in value)
+        has_special = any(not ch.isalnum() for ch in value)
+        if not (has_upper and has_lower and has_digit and has_special):
+            raise ValueError(
+                "Password must include uppercase, lowercase, number, and special character"
+            )
+        return value
 
 
 class PatientBase(BaseModel):

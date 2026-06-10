@@ -18,6 +18,9 @@ bcrypt==5.0.0
 cryptography==46.0.5
 email-validator==2.3.0
 
+# Email
+aiosmtplib==3.0.0
+
 # Environment variables
 python-dotenv==1.2.1
 
